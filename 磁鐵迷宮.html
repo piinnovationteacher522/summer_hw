@@ -1,0 +1,924 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>磁鐵迷宮 Magnet Maze</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        * { -webkit-tap-highlight-color: transparent; touch-action: none; box-sizing: border-box; }
+        html, body { margin: 0; overflow: hidden; height: 100%; background: #0f172a;
+            font-family: 'Segoe UI', 'PingFang TC', 'Microsoft JhengHei', Tahoma, sans-serif; }
+        #game-canvas { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; display: block; }
+        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; pointer-events: none;
+            display: flex; align-items: center; justify-content: center; }
+        .panel { background: #ffffff; border-radius: 20px; box-shadow: 0 8px 32px rgba(0,0,0,0.25); pointer-events: auto; }
+        .hidden { display: none !important; }
+
+        @keyframes pop { 0%{transform:scale(0.6);opacity:0;} 60%{transform:scale(1.08);} 100%{transform:scale(1);opacity:1;} }
+        .pop { animation: pop .28s ease-out both; }
+
+        .modal-overlay { position: fixed; inset: 0; background: rgba(15,23,42,0.55); z-index: 100;
+            display: flex; align-items: center; justify-content: center; padding: 16px; }
+        .modal-box { background: #fff; border-radius: 20px; padding: 24px; max-width: 340px; width: 100%;
+            box-shadow: 0 12px 48px rgba(0,0,0,0.3); }
+        .btn-primary { width: 100%; background: #4f46e5; color: #fff; font-weight: 700; border: none;
+            border-radius: 12px; padding: 14px; font-size: 1.05rem; cursor: pointer; margin-top: 14px; }
+        .btn-primary:active { background: #3730a3; }
+        .btn-secondary { width: 100%; background: #f3f4f6; color: #374151; font-weight: 600; border: none;
+            border-radius: 12px; padding: 12px; font-size: 0.95rem; cursor: pointer; margin-top: 8px; }
+        .btn-secondary:active { background: #e5e7eb; }
+
+        #control-bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; pointer-events: none;
+            display: flex; justify-content: center; padding: 10px 10px calc(10px + env(safe-area-inset-bottom)); }
+        #control-inner { pointer-events: auto; background: rgba(255,255,255,0.96); border-radius: 20px 20px 0 0;
+            box-shadow: 0 -6px 24px rgba(0,0,0,0.25); padding: 10px 14px 14px; width: 100%; max-width: 520px; }
+        .mag-btn { flex: 1; border: 3px solid transparent; border-radius: 16px; padding: 12px 6px; cursor: pointer;
+            font-weight: 900; color: #fff; user-select: none; transition: transform 0.1s, box-shadow .15s; text-align: center; }
+        .mag-btn:active { transform: scale(0.96); }
+        .mag-n { background: linear-gradient(135deg,#ef4444,#dc2626); }
+        .mag-s { background: linear-gradient(135deg,#3b82f6,#2563eb); }
+        .mag-btn.sel { box-shadow: 0 0 0 4px #fde047, 0 6px 16px rgba(0,0,0,0.25); transform: translateY(-2px); }
+        .mag-pole { font-size: 1.7rem; line-height: 1; }
+        .mag-label { font-size: 0.72rem; font-weight: 700; opacity: 0.95; margin-top: 2px; }
+
+        .chip { background: #1f2937; color: #fff; padding: 7px 13px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+
+        #toast { position: fixed; top: 18%; left: 50%; transform: translateX(-50%); z-index: 60; pointer-events: none;
+            background: #16a34a; color: #fff; font-weight: 900; padding: 10px 22px; border-radius: 999px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.3); font-size: 1.05rem; opacity: 0; transition: opacity .2s, transform .2s; }
+        #toast.show { opacity: 1; transform: translateX(-50%) translateY(-6px); }
+
+        @media (max-width: 640px) {
+            #hud { padding: 6px !important; }
+            .chip { padding: 6px 10px; font-size: 0.92em; }
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="game-canvas"></canvas>
+
+    <div id="return-confirm-modal" class="modal-overlay hidden">
+        <div class="modal-box" style="max-width:300px;text-align:center;">
+            <div style="font-size:2rem;margin-bottom:8px;">🏠</div>
+            <h3 style="font-size:1.1rem;font-weight:900;color:#1f2937;margin-bottom:6px;">返回主頁？</h3>
+            <p style="color:#6b7280;font-size:0.85rem;margin-bottom:18px;">目前進度將不會儲存。</p>
+            <button id="confirm-return-yes" class="btn-primary" style="margin-top:0;">確認返回</button>
+            <button id="confirm-return-no" class="btn-secondary">繼續遊戲</button>
+        </div>
+    </div>
+
+    <div id="hud" class="absolute top-0 left-0 w-full p-3 flex justify-between items-start z-20 pointer-events-none hidden" style="gap:8px;">
+        <button id="back-home-btn" onclick="confirmReturnHome()" class="chip" style="pointer-events:auto;border:none;font-size:0.82rem;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:5px;">← 返回</button>
+
+        <div id="hud-mid" class="chip" style="text-align:center;display:none;">
+            <div id="hud-mid-top" style="font-size:0.7rem;color:#9ca3af;">分數</div>
+            <div id="hud-mid-val" style="font-size:1.2rem;font-weight:900;color:#fbbf24;">0</div>
+            <div id="hud-mid-sub" style="font-size:0.7rem;font-weight:700;color:#4ade80;"></div>
+        </div>
+
+        <div id="hud-right" class="chip" style="text-align:center;">
+            <div id="hud-right-top" style="font-size:0.7rem;color:#9ca3af;">時間</div>
+            <div id="hud-right-val" style="font-size:1.3rem;font-weight:900;color:#fff;">0s</div>
+        </div>
+
+        <button id="reset-car-btn" onclick="resetCarPosition()" class="chip" style="pointer-events:auto;border:none;font-size:0.82rem;font-weight:700;cursor:pointer;background:#b45309;">↺ 重置</button>
+    </div>
+
+    <div id="ui-layer">
+
+        <div id="start-panel" class="panel" style="padding:26px;max-width:360px;width:calc(100% - 32px);margin:16px;text-align:center;">
+            <div style="font-size:2.6rem;line-height:1;margin-bottom:4px;">🧲</div>
+            <h1 style="font-size:1.7rem;font-weight:900;color:#1f2937;margin-bottom:4px;">磁鐵迷宮</h1>
+            <p style="color:#6b7280;font-size:0.85rem;margin-bottom:18px;">收集星星、避開鐵釘、推開鐵球，用磁力把小車送到終點！</p>
+            <div style="display:flex;flex-direction:column;gap:10px;">
+                <button id="campaign-btn" style="background:#4f46e5;color:#fff;font-weight:700;font-size:1.05rem;padding:14px;border:none;border-radius:14px;cursor:pointer;">📋 關卡模式 (5關)</button>
+                <button id="endless-btn" style="background:#2563eb;color:#fff;font-weight:700;font-size:1.05rem;padding:14px;border:none;border-radius:14px;cursor:pointer;">🚀 無盡模式</button>
+                <button id="tutorial-btn" style="background:#16a34a;color:#fff;font-weight:700;font-size:0.95rem;padding:12px;border:none;border-radius:14px;cursor:pointer;">🎓 教學模式</button>
+            </div>
+            <p style="font-size:0.72rem;color:#9ca3af;margin-top:14px;">第一次玩？建議先試試教學模式 🎓</p>
+        </div>
+
+        <div id="mission-banner" class="panel hidden" style="position:fixed;top:74px;left:50%;transform:translateX(-50%);
+            padding:10px 16px;max-width:92%;width:auto;text-align:center;z-index:15;">
+            <div id="mission-badge" style="font-size:0.72rem;font-weight:800;color:#4f46e5;margin-bottom:2px;"></div>
+            <p id="mission-instruction" style="font-size:0.85rem;color:#374151;line-height:1.4;font-weight:600;margin:0;"></p>
+            <div id="mission-objective" style="font-size:0.78rem;color:#b45309;font-weight:800;margin-top:4px;"></div>
+        </div>
+
+        <div id="result-panel" class="panel hidden" style="padding:24px;max-width:320px;width:calc(100% - 32px);margin:16px;text-align:center;">
+            <h2 id="result-title" style="font-size:1.6rem;font-weight:900;margin-bottom:6px;"></h2>
+            <div id="result-stars" style="font-size:2rem;letter-spacing:4px;margin-bottom:6px;"></div>
+            <p id="result-msg" style="color:#4b5563;margin-bottom:14px;font-size:0.9rem;background:#f9fafb;padding:12px;border-radius:12px;border:1px solid #e5e7eb;line-height:1.5;"></p>
+            <button id="next-btn" style="background:#1f2937;color:#fff;font-weight:700;border:none;border-radius:12px;padding:14px;width:100%;font-size:0.95rem;cursor:pointer;">繼續 →</button>
+        </div>
+
+        <div id="gameover-panel" class="panel hidden" style="padding:30px;max-width:300px;width:calc(100% - 32px);margin:16px;text-align:center;border:2px solid #ef4444;">
+            <h2 style="font-size:1.8rem;font-weight:900;color:#ef4444;margin-bottom:10px;">⏰ 時間到！</h2>
+            <p style="color:#6b7280;font-size:0.85rem;margin-bottom:2px;">最終得分</p>
+            <p id="final-score" style="font-size:2.6rem;font-weight:900;color:#f59e0b;margin-bottom:10px;">0</p>
+            <p style="color:#6b7280;font-size:0.82rem;margin-bottom:2px;">🏁 過關數</p>
+            <p id="final-cleared" style="font-size:1.3rem;font-weight:900;color:#4f46e5;margin-bottom:18px;">0</p>
+            <button id="restart-game-btn" style="background:linear-gradient(90deg,#dc2626,#ea580c);color:#fff;font-weight:700;border:none;border-radius:12px;padding:14px;width:100%;font-size:0.95rem;cursor:pointer;">返回主畫面</button>
+        </div>
+
+        <div id="campaign-complete-panel" class="panel hidden" style="padding:28px;max-width:320px;width:calc(100% - 32px);margin:16px;text-align:center;border:2px solid #f59e0b;">
+            <div style="font-size:2.5rem;margin-bottom:6px;">🏆</div>
+            <h2 style="font-size:1.4rem;font-weight:900;color:#b45309;margin-bottom:6px;">全部通關！</h2>
+            <div id="campaign-rating" style="font-size:1.8rem;letter-spacing:3px;margin-bottom:8px;"></div>
+            <p style="color:#6b7280;font-size:0.82rem;margin-bottom:2px;">⏱ 總用時</p>
+            <p id="campaign-total-time" style="font-size:1.7rem;font-weight:900;color:#4f46e5;margin-bottom:4px;">0s</p>
+            <p style="color:#6b7280;font-size:0.82rem;margin-bottom:2px;">🧲 使用磁棒 ・ ⭐ 收集星星</p>
+            <p id="campaign-stats" style="font-size:1.1rem;font-weight:900;color:#16a34a;margin-bottom:18px;">0 次 ・ 0 顆</p>
+            <button id="campaign-restart-btn" class="btn-primary" style="margin-top:0;">返回主畫面</button>
+        </div>
+    </div>
+
+    <div id="control-bar" class="hidden">
+        <div id="control-inner">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;gap:8px;">
+                <div style="font-size:0.74rem;color:#475569;font-weight:700;">這台車是
+                    <span id="car-pole-tag" style="display:inline-block;color:#fff;border-radius:6px;padding:1px 8px;font-weight:900;">N 極</span>
+                </div>
+                <div style="font-size:0.7rem;color:#64748b;font-weight:600;">選磁棒 → 按住迷宮拖曳</div>
+            </div>
+            <div style="display:flex;gap:10px;">
+                <div id="mag-btn-n" class="mag-btn mag-n" onclick="selectPole('N')" style="position:relative;">
+                    <div id="mag-lock-n" style="display:none;position:absolute;top:4px;right:8px;font-size:0.9rem;">🔒</div>
+                    <div class="mag-pole">🧲 N極</div>
+                    <div class="mag-label">紅色磁棒</div>
+                </div>
+                <div id="mag-btn-s" class="mag-btn mag-s" onclick="selectPole('S')" style="position:relative;">
+                    <div id="mag-lock-s" style="display:none;position:absolute;top:4px;right:8px;font-size:0.9rem;">🔒</div>
+                    <div class="mag-pole">🧲 S極</div>
+                    <div class="mag-label">藍色磁棒</div>
+                </div>
+            </div>
+            <div style="display:flex;justify-content:center;gap:12px;margin-top:8px;font-size:0.66rem;color:#64748b;font-weight:600;flex-wrap:wrap;">
+                <span>🔴 同極相斥=推</span><span>🔵 異極相吸=拉</span><span>🔩 鐵球兩極都吸</span>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast"></div>
+
+    <script>
+    // =====================================================================
+    //  接收學生資料與 Google Sheet 串接
+    // =====================================================================
+    const urlParams = new URLSearchParams(window.location.search);
+    const studentClass = urlParams.get('class') || '未設定班別';
+    const studentId = urlParams.get('id') || '未設定學號';
+
+    const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwHKY-YDXziCb0eCZtW-GQ9MGUQshKIIJk1qJgX7TPqTL1YwThCrvCld5YNSH9CSwpPew/exec";
+
+    function sendDataToSheet(finalScore) {
+        const timeSpent = mode === 'endless' ? Math.floor((Date.now() - runStartTime) / 1000) : elapsedSec;
+        const gameModeName = mode === 'campaign' ? '磁鐵迷宮(關卡)' : '磁鐵迷宮(無盡)';
+        const data = {
+            gameName: gameModeName,
+            studentClass: studentClass,
+            studentId: studentId,
+            playDate: new Date().toLocaleDateString('zh-HK'),
+            playTime: timeSpent + "秒",
+            score: finalScore
+        };
+        fetch(GAS_WEB_APP_URL, { method: 'POST', body: JSON.stringify(data), headers: { 'Content-Type': 'text/plain;charset=utf-8' }})
+        .catch(e => console.log(e));
+    }
+
+    // =====================================================================
+    //  遊戲核心變數與常數
+    // =====================================================================
+    const canvas = document.getElementById('game-canvas');
+    const ctx = canvas.getContext('2d');
+    let DPR = Math.min(window.devicePixelRatio || 1, 2);
+
+    let world = { cols:0, rows:0, walls:[], wood:[], nails:[], stars:[], balls:[], ballStarts:[], goal:null, carPole:'N', totalStars:0, allow:null };
+    let car = { x:0, y:0, vx:0, vy:0 };
+    let startCell = { x:0, y:0 };
+    let originX=0, originY=0, cell=40;
+
+    let selectedPole = 'N';
+    let magnet = null;
+    let particles = [];
+
+    let mode = '';
+    let stepIndex = 0;
+    let levelActive = false;
+    let levelWon = false;
+
+    let magnetUses = 0;    
+    let levelUses = 0;     
+    let starsCollected = 0;
+    let ratingSum = 0;     
+    let runStartTime = 0, elapsedSec = 0;
+
+    let endlessTimeLeft = 60, endlessScore = 0, endlessCleared = 0, endlessTimer = null;
+    let campaignTimer = null;
+    let audioCtx = null;
+
+    const CAR_R       = 0.34;   
+    const GOAL_R      = 0.46;
+    const STAR_R      = 0.30;
+    const BALL_R      = 0.36;
+    const MAG_RANGE   = 4.4;    
+    const MAG_K       = 0.042;  
+    const MAG_SOFT    = 0.55;   
+    const MAG_MAX     = 0.095;  
+    const MAG_NEAR    = 0.70;   
+    const NEAR_DAMP   = 0.60;   
+    const FRICTION    = 0.905;
+    const MAX_SPEED   = 0.26;
+    const NAIL_RANGE  = 1.6;
+    const NAIL_K      = 0.026;
+    const NAIL_MAX    = 0.058;
+    const NAIL_NEAR   = 0.55;
+    const NAIL_STICK  = 0.55;
+    const BALL_MAG_K    = 0.050;
+    const BALL_MAG_MAX  = 0.090;
+    const BALL_MAG_NEAR = 0.60;
+    const BALL_NAIL_K   = 0.030;
+    const BALL_NAIL_MAX = 0.055;
+    const BALL_FRICTION = 0.90;
+    const BALL_MAX_SPEED= 0.24;
+    const ENDLESS_TIME = 60;
+    const ENDLESS_ADD  = 8;
+    const ENDLESS_CAP  = 75;
+    const STAR_BONUS   = 30;    
+
+    // =====================================================================
+    //  關卡定義
+    // =====================================================================
+    const CAMPAIGN_LEVELS = [
+        { pole:'N', tip:'車是 N 極。用 S 極磁棒(藍)把車吸過去，先吃到 ⭐ 再進終點！', map:[
+            "##########",
+            "#C.......#",
+            "#...O....#",
+            "#.......G#",
+            "#........#",
+            "##########",
+        ]},
+        { pole:'N', allow:'S', tip:'⚠️ 本關只能用 S 極磁棒(藍)！車是 N 極，異極相吸——只能「拉」著車走。', map:[
+            "##########",
+            "#C..O....#",
+            "#..WWW...#",
+            "#....O...#",
+            "#...WWW.G#",
+            "##########",
+        ]},
+        { pole:'S', tip:'車是 S 極！鐵釘 ⚙️ 會吸住車，小心避開，收集 2 顆 ⭐。', map:[
+            "##########",
+            "#C..O....#",
+            "#...X....#",
+            "#..O..X..#",
+            "#.X....G.#",
+            "##########",
+        ]},
+        { pole:'N', tip:'鐵釘擋路會吸車！把鐵球 🔩 推到鐵釘上，鐵釘忙著吸球就不再吸車，車就能安全通過。', map:[
+            "############",
+            "#C........O#",
+            "#...X...B..#",
+            "#.........G#",
+            "############",
+        ]},
+        { pole:'N', tip:'最終挑戰！木塊、鐵釘、鐵球全上場。用鐵球消掉擋路鐵釘，收齊 3 顆 ⭐ 通關！', map:[
+            "############",
+            "#C..O......#",
+            "#.WW.WW.WW.#",
+            "#...X...B..#",
+            "#.WW.WW.WW.#",
+            "#..O....O.G#",
+            "############",
+        ]},
+    ];
+
+    const TUTORIAL_LEVELS = [
+        { pole:'N', tip:'第1課：車是 N 極。把 S 極磁棒(藍)放在星星那邊，異極相吸把車「吸」過去！', map:[
+            "#########",
+            "#C..O..G#",
+            "#########",
+        ]},
+        { pole:'N', allow:'N', tip:'第2課：同極相斥！本關只有 N 極磁棒(紅)。放在車後方把車「推」向前。', map:[
+            "#########",
+            "#C..O..G#",
+            "#########",
+        ]},
+        { pole:'N', tip:'第3課：鐵釘 ⚙️ 是磁性物質會吸住車。繞開它，收到 ⭐ 再進終點。', map:[
+            "##########",
+            "#C.....O.#",
+            "#...X....#",
+            "#......G.#",
+            "##########",
+        ]},
+        { pole:'S', tip:'第4課：車變成 S 極了！木塊是非磁性物質，只會擋路。繞過去收 ⭐。', map:[
+            "##########",
+            "#C..WW...#",
+            "#.....O..#",
+            "#..WW..G.#",
+            "##########",
+        ]},
+        { pole:'N', tip:'第5課：鐵釘擋路時，把鐵球 🔩 推到鐵釘上！鐵釘吸住鐵球後，就不會再吸車子了。', map:[
+            "##########",
+            "#C.......#",
+            "#..X..B..#",
+            "#....O..G#",
+            "##########",
+        ]},
+    ];
+
+    // =====================================================================
+    //  音效與基礎設定
+    // =====================================================================
+    function initAudio(){ if(!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)(); if(audioCtx.state==='suspended') audioCtx.resume(); }
+    function playSound(type){
+        if(!audioCtx) return;
+        const osc = audioCtx.createOscillator(), gain = audioCtx.createGain();
+        osc.connect(gain); gain.connect(audioCtx.destination);
+        const now = audioCtx.currentTime;
+        if(type==='click'){ osc.type='sine'; osc.frequency.setValueAtTime(420,now); gain.gain.setValueAtTime(0.08,now); gain.gain.exponentialRampToValueAtTime(0.01,now+0.08); osc.start(now); osc.stop(now+0.08); }
+        else if(type==='star'){ osc.type='triangle'; osc.frequency.setValueAtTime(880,now); osc.frequency.setValueAtTime(1170,now+0.08); gain.gain.setValueAtTime(0.16,now); gain.gain.exponentialRampToValueAtTime(0.01,now+0.18); osc.start(now); osc.stop(now+0.18); }
+        else if(type==='win'){ osc.type='triangle'; osc.frequency.setValueAtTime(523,now); osc.frequency.setValueAtTime(659,now+0.1); osc.frequency.setValueAtTime(784,now+0.2); osc.frequency.setValueAtTime(1046,now+0.35); gain.gain.setValueAtTime(0.2,now); gain.gain.linearRampToValueAtTime(0,now+0.9); osc.start(now); osc.stop(now+0.9); }
+        else if(type==='over'){ osc.type='sawtooth'; osc.frequency.setValueAtTime(220,now); osc.frequency.exponentialRampToValueAtTime(60,now+0.6); gain.gain.setValueAtTime(0.25,now); gain.gain.exponentialRampToValueAtTime(0.01,now+0.6); osc.start(now); osc.stop(now+0.6); }
+    }
+
+    function resize(){
+        DPR = Math.min(window.devicePixelRatio || 1, 2);
+        canvas.width = Math.floor(window.innerWidth * DPR);
+        canvas.height = Math.floor(window.innerHeight * DPR);
+        canvas.style.width = window.innerWidth+'px';
+        canvas.style.height = window.innerHeight+'px';
+        ctx.setTransform(DPR,0,0,DPR,0,0);
+        computeLayout();
+    }
+    function computeLayout(){
+        if(!world.cols) return;
+        const topPad = 148;
+        const bottomPad = document.getElementById('control-bar').classList.contains('hidden') ? 40 : 190;
+        const availW = window.innerWidth - 24;
+        const availH = window.innerHeight - topPad - bottomPad;
+        cell = Math.max(18, Math.min(availW/world.cols, availH/world.rows));
+        const boardW = cell*world.cols, boardH = cell*world.rows;
+        originX = (window.innerWidth - boardW)/2;
+        originY = topPad + (availH - boardH)/2;
+    }
+    const gx2px = gx => originX + gx*cell;
+    const gy2px = gy => originY + gy*cell;
+    const px2gx = px => (px - originX)/cell;
+    const px2gy = py => (py - originY)/cell;
+
+    // =====================================================================
+    //  遊戲邏輯與繪圖
+    // =====================================================================
+    function loadLevel(def){
+        const map = def.map;
+        world = { cols: map[0].length, rows: map.length, walls:[], wood:[], nails:[], stars:[], balls:[], ballStarts:[], goal:null, carPole:def.pole, totalStars:0, allow:def.allow||null };
+        for(let r=0;r<map.length;r++){
+            for(let c=0;c<map[r].length;c++){
+                const ch = map[r][c];
+                if(ch==='#') world.walls.push({c,r});
+                else if(ch==='W') world.wood.push({c,r});
+                else if(ch==='X') world.nails.push({c:c+0.5, r:r+0.5, covered:false});
+                else if(ch==='O') world.stars.push({x:c+0.5, y:r+0.5});
+                else if(ch==='B'){ world.balls.push({x:c+0.5, y:r+0.5, vx:0, vy:0}); world.ballStarts.push({x:c+0.5, y:r+0.5}); }
+                else if(ch==='C'){ startCell={x:c+0.5, y:r+0.5}; }
+                else if(ch==='G'){ world.goal={x:c+0.5, y:r+0.5}; }
+            }
+        }
+        world.totalStars = world.stars.length;
+        selectedPole = world.allow ? world.allow : 'N';
+        updatePoleUI(); resetCarPosition(); magnet=null; particles=[];
+        levelWon=false; levelActive=true; levelUses=0;
+        computeLayout(); updateObjectiveUI();
+    }
+    function resetCarPosition(){
+        car.x = startCell.x; car.y = startCell.y; car.vx=0; car.vy=0;
+        world.balls.forEach((b,i)=>{ b.x=world.ballStarts[i].x; b.y=world.ballStarts[i].y; b.vx=0; b.vy=0; });
+        magnet=null;
+    }
+
+    function updatePoleUI(){
+        const btnN = document.getElementById('mag-btn-n'), btnS = document.getElementById('mag-btn-s');
+        btnN.classList.toggle('sel', selectedPole==='N');
+        btnS.classList.toggle('sel', selectedPole==='S');
+        const lockN = world.allow==='S', lockS = world.allow==='N';
+        btnN.style.opacity = lockN ? '0.35' : '1';
+        btnS.style.opacity = lockS ? '0.35' : '1';
+        btnN.style.filter = lockN ? 'grayscale(0.7)' : 'none';
+        btnS.style.filter = lockS ? 'grayscale(0.7)' : 'none';
+        document.getElementById('mag-lock-n').style.display = lockN ? 'block' : 'none';
+        document.getElementById('mag-lock-s').style.display = lockS ? 'block' : 'none';
+        const tag = document.getElementById('car-pole-tag');
+        if(world.carPole==='N'){ tag.textContent='N 極'; tag.style.background='#dc2626'; }
+        else { tag.textContent='S 極'; tag.style.background='#2563eb'; }
+    }
+    function selectPole(p){
+        if(world.allow && p!==world.allow){ return; } 
+        selectedPole=p; updatePoleUI(); initAudio(); playSound('click');
+    }
+
+    function pointerToGrid(e){
+        const rect = canvas.getBoundingClientRect();
+        const px = (e.touches?e.touches[0].clientX:e.clientX) - rect.left;
+        const py = (e.touches?e.touches[0].clientY:e.clientY) - rect.top;
+        return { gx: px2gx(px), gy: px2gy(py) };
+    }
+    function onPointerDown(e){
+        if(!levelActive || levelWon) return;
+        initAudio();
+        const g = pointerToGrid(e);
+        if(g.gx<0||g.gx>world.cols||g.gy<0||g.gy>world.rows) return;
+        magnet = { gx:g.gx, gy:g.gy };
+        magnetUses++; levelUses++;
+        e.preventDefault();
+    }
+    function onPointerMove(e){ if(!magnet) return; const g = pointerToGrid(e); magnet.gx=g.gx; magnet.gy=g.gy; e.preventDefault(); }
+    function onPointerUp(){ magnet=null; }
+
+    canvas.addEventListener('mousedown', onPointerDown);
+    canvas.addEventListener('mousemove', onPointerMove);
+    window.addEventListener('mouseup', onPointerUp);
+    canvas.addEventListener('touchstart', onPointerDown, {passive:false});
+    canvas.addEventListener('touchmove', onPointerMove, {passive:false});
+    window.addEventListener('touchend', onPointerUp);
+
+    function resolveBlocks(o, R){
+        const blocks = [...world.walls, ...world.wood];
+        for(const b of blocks){
+            const cx = Math.max(b.c, Math.min(o.x, b.c+1));
+            const cy = Math.max(b.r, Math.min(o.y, b.r+1));
+            let dx = o.x-cx, dy = o.y-cy, d = Math.hypot(dx,dy);
+            if(d < R){
+                if(d < 1e-4){ dx = o.x-(b.c+0.5); dy = o.y-(b.r+0.5); d = Math.hypot(dx,dy)||1; }
+                const nx=dx/d, ny=dy/d, push=R-d;
+                o.x += nx*push; o.y += ny*push;
+                const vn = o.vx*nx + o.vy*ny;
+                if(vn<0){ o.vx -= vn*nx; o.vy -= vn*ny; o.vx*=0.5; o.vy*=0.5; }
+            }
+        }
+    }
+    function moveWithCollision(o, R, maxSp){
+        let sp = Math.hypot(o.vx,o.vy);
+        if(sp>maxSp){ o.vx*=maxSp/sp; o.vy*=maxSp/sp; sp=maxSp; }
+        const steps = Math.max(1, Math.ceil(sp/0.12));
+        for(let i=0;i<steps;i++){ o.x+=o.vx/steps; o.y+=o.vy/steps; resolveBlocks(o,R); }
+        o.x = Math.max(R, Math.min(world.cols-R, o.x));
+        o.y = Math.max(R, Math.min(world.rows-R, o.y));
+    }
+    function collideCircles(a, ra, b, rb){
+        let dx=b.x-a.x, dy=b.y-a.y, d=Math.hypot(dx,dy), min=ra+rb;
+        if(d>0 && d<min){
+            const nx=dx/d, ny=dy/d, overlap=min-d;
+            a.x-=nx*overlap*0.5; a.y-=ny*overlap*0.5;
+            b.x+=nx*overlap*0.5; b.y+=ny*overlap*0.5;
+            const rel=(b.vx-a.vx)*nx + (b.vy-a.vy)*ny;
+            if(rel<0){ const imp=rel*0.7; a.vx+=nx*imp; a.vy+=ny*imp; b.vx-=nx*imp; b.vy-=ny*imp; }
+        }
+    }
+
+    function physicsStep(){
+        if(!levelActive || levelWon) return;
+
+        if(magnet){
+            let dx = car.x-magnet.gx, dy = car.y-magnet.gy, d = Math.hypot(dx,dy);
+            const same = (selectedPole===world.carPole);
+            if(d < MAG_NEAR){
+                car.vx *= NEAR_DAMP; car.vy *= NEAR_DAMP;
+                if(same && d>1e-3){ car.vx += (dx/d)*0.030; car.vy += (dy/d)*0.030; }
+            } else if(d < MAG_RANGE){
+                let a = Math.min(MAG_K/(d*d+MAG_SOFT), MAG_MAX);
+                const dir = same ? 1 : -1;
+                car.vx += dir*(dx/d)*a; car.vy += dir*(dy/d)*a;
+            }
+        }
+        for(const n of world.nails){
+            n.covered = world.balls.some(b => Math.hypot(b.x-n.c, b.y-n.r) < NAIL_STICK + 0.15);
+        }
+        for(const n of world.nails){
+            if(n.covered) continue;
+            let dx = n.c-car.x, dy = n.r-car.y, d = Math.hypot(dx,dy);
+            if(d < NAIL_NEAR){ car.vx*=NEAR_DAMP; car.vy*=NEAR_DAMP; }
+            else if(d < NAIL_RANGE){
+                let a = Math.min(NAIL_K/(d*d+0.30), NAIL_MAX);
+                car.vx += (dx/d)*a; car.vy += (dy/d)*a;
+                if(d < NAIL_STICK){ car.vx*=0.85; car.vy*=0.85; }
+            }
+        }
+        car.vx *= FRICTION; car.vy *= FRICTION;
+        moveWithCollision(car, CAR_R, MAX_SPEED);
+
+        for(const b of world.balls){
+            if(magnet){
+                let dx = magnet.gx-b.x, dy = magnet.gy-b.y, d = Math.hypot(dx,dy);
+                if(d < BALL_MAG_NEAR){ b.vx*=NEAR_DAMP; b.vy*=NEAR_DAMP; }
+                else if(d < MAG_RANGE){
+                    let a = Math.min(BALL_MAG_K/(d*d+MAG_SOFT), BALL_MAG_MAX); 
+                    b.vx += (dx/d)*a; b.vy += (dy/d)*a;
+                }
+            }
+            for(const n of world.nails){
+                let dx = n.c-b.x, dy = n.r-b.y, d = Math.hypot(dx,dy);
+                if(d < NAIL_RANGE && d>1e-3){ let a = Math.min(BALL_NAIL_K/(d*d+0.30), BALL_NAIL_MAX); b.vx+=(dx/d)*a; b.vy+=(dy/d)*a; }
+            }
+            b.vx *= BALL_FRICTION; b.vy *= BALL_FRICTION;
+            moveWithCollision(b, BALL_R, BALL_MAX_SPEED);
+            collideCircles(car, CAR_R, b, BALL_R);
+        }
+        for(let i=0;i<world.balls.length;i++) for(let j=i+1;j<world.balls.length;j++) collideCircles(world.balls[i], BALL_R, world.balls[j], BALL_R);
+
+        for(let i=world.stars.length-1;i>=0;i--){
+            const s=world.stars[i];
+            if(Math.hypot(car.x-s.x, car.y-s.y) < CAR_R+STAR_R){
+                world.stars.splice(i,1); starsCollected++; playSound('star');
+                spawnBurst(s.x, s.y, ['#fde047','#fbbf24','#f59e0b']);
+                if(mode==='endless') endlessScore += STAR_BONUS;
+                updateObjectiveUI(); updateHUD();
+            }
+        }
+
+        if(world.goal && world.stars.length===0){
+            const gd = Math.hypot(car.x-world.goal.x, car.y-world.goal.y);
+            if(gd < GOAL_R + CAR_R*0.4){ onLevelWin(); }
+        }
+
+        particles.forEach(p=>{ p.x+=p.vx; p.y+=p.vy; p.vy+=0.012; p.life--; });
+        particles = particles.filter(p=>p.life>0);
+    }
+
+    function draw(){
+        ctx.clearRect(0,0,window.innerWidth,window.innerHeight);
+        const bg = ctx.createLinearGradient(0,0,0,window.innerHeight);
+        bg.addColorStop(0,'#1e293b'); bg.addColorStop(1,'#0f172a');
+        ctx.fillStyle = bg; ctx.fillRect(0,0,window.innerWidth,window.innerHeight);
+        if(!world.cols) return;
+
+        const bw=cell*world.cols, bh=cell*world.rows;
+        ctx.fillStyle = '#fef9ef'; roundRect(originX-6, originY-6, bw+12, bh+12, 14); ctx.fill();
+        ctx.strokeStyle = '#eadfce'; ctx.lineWidth = 1;
+        for(let c=0;c<=world.cols;c++){ ctx.beginPath(); ctx.moveTo(gx2px(c),gy2px(0)); ctx.lineTo(gx2px(c),gy2px(world.rows)); ctx.stroke(); }
+        for(let r=0;r<=world.rows;r++){ ctx.beginPath(); ctx.moveTo(gx2px(0),gy2px(r)); ctx.lineTo(gx2px(world.cols),gy2px(r)); ctx.stroke(); }
+
+        if(world.goal) drawGoal(world.goal, world.stars.length===0);
+        world.wood.forEach(drawWood);
+        world.walls.forEach(drawWall);
+        world.nails.forEach(drawNail);
+        world.stars.forEach(drawStar);
+        if(magnet) drawForceArrows();
+        if(magnet) drawMagnet(magnet);
+        world.balls.forEach(drawBall);
+        drawCar();
+        particles.forEach(p=>{ ctx.globalAlpha=Math.max(0,p.life/60); ctx.fillStyle=p.color; const s=cell*0.10; ctx.fillRect(gx2px(p.x)-s/2, gy2px(p.y)-s/2, s, s); });
+        ctx.globalAlpha=1;
+    }
+    function roundRect(x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+
+    function drawWall(w){
+        const x=gx2px(w.c), y=gy2px(w.r);
+        ctx.fillStyle='#64748b'; roundRect(x+1,y+1,cell-2,cell-2,4); ctx.fill();
+        ctx.fillStyle='#475569'; ctx.fillRect(x+2,y+cell*0.5,cell-4,cell*0.45);
+        ctx.strokeStyle='#334155'; ctx.lineWidth=1; ctx.strokeRect(x+2,y+2,cell-4,cell-4);
+    }
+    function drawWood(w){
+        const x=gx2px(w.c), y=gy2px(w.r);
+        ctx.fillStyle='#b5793b'; roundRect(x+1,y+1,cell-2,cell-2,5); ctx.fill();
+        ctx.strokeStyle='#8a5a2b'; ctx.lineWidth=1.5;
+        for(let i=1;i<3;i++){ ctx.beginPath(); ctx.moveTo(x+2,y+i*cell/3); ctx.lineTo(x+cell-2,y+i*cell/3); ctx.stroke(); }
+        ctx.font=`${cell*0.34}px sans-serif`; ctx.textAlign='center'; ctx.textBaseline='middle';
+        ctx.fillText('🪵', x+cell/2, y+cell/2);
+    }
+    function drawNail(n){
+        const x=gx2px(n.c), y=gy2px(n.r), s=cell*0.52;
+        ctx.save();
+        if(n.covered){
+            ctx.globalAlpha=0.6; ctx.fillStyle='#86efac'; roundRect(x-s/2,y-s/2,s,s,5); ctx.fill(); ctx.globalAlpha=1;
+            ctx.font=`${s*0.7}px sans-serif`; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('✅', x, y);
+        } else {
+            ctx.fillStyle='#9ca3af'; roundRect(x-s/2,y-s/2,s,s,5); ctx.fill();
+            ctx.strokeStyle='#6b7280'; ctx.lineWidth=1.5; ctx.strokeRect(x-s/2+1,y-s/2+1,s-2,s-2);
+            ctx.font=`${s*0.7}px sans-serif`; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('⚙️', x, y);
+        }
+        ctx.restore();
+    }
+    function drawStar(s){
+        const x=gx2px(s.x), y=gy2px(s.y), R=cell*0.30;
+        ctx.font=`${R*1.9}px sans-serif`; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('⭐', x, y+1);
+    }
+    function drawGoal(g, active){
+        const x=gx2px(g.x), y=gy2px(g.y), s=cell*0.82;
+        ctx.save();
+        if(active){
+            ctx.fillStyle='rgba(34,197,94,0.15)'; roundRect(x-s/2,y-s/2,s,s,8); ctx.fill();
+            ctx.strokeStyle='#22c55e'; ctx.lineWidth=3; ctx.setLineDash([6,5]); roundRect(x-s/2,y-s/2,s,s,8); ctx.stroke(); ctx.setLineDash([]);
+            ctx.font=`${s*0.6}px sans-serif`; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('🏁', x, y);
+        } else {
+            ctx.fillStyle='rgba(148,163,184,0.15)'; roundRect(x-s/2,y-s/2,s,s,8); ctx.fill();
+            ctx.strokeStyle='#94a3b8'; ctx.lineWidth=3; ctx.setLineDash([4,4]); roundRect(x-s/2,y-s/2,s,s,8); ctx.stroke(); ctx.setLineDash([]);
+            ctx.font=`${s*0.55}px sans-serif`; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('🔒', x, y);
+        }
+        ctx.restore();
+    }
+    function drawMagnet(m){
+        const x=gx2px(m.gx), y=gy2px(m.gy), w=cell*0.42, h=cell*0.92;
+        ctx.save(); ctx.translate(x,y);
+        const isN = selectedPole==='N';
+        ctx.fillStyle = isN? '#ef4444':'#3b82f6'; roundRect(-w/2,-h/2,w,h/2,5); ctx.fill();
+        ctx.fillStyle = '#e5e7eb'; roundRect(-w/2,0,w,h/2,5); ctx.fill();
+        ctx.fillStyle='#fff'; ctx.font=`900 ${cell*0.30}px sans-serif`; ctx.textAlign='center'; ctx.textBaseline='middle';
+        ctx.fillText(selectedPole, 0, -h*0.22);
+        ctx.fillStyle = isN? '#ef4444':'#3b82f6'; ctx.fillText(isN?'N':'S', 0, h*0.22);
+        ctx.restore();
+    }
+    function drawForceArrows(){
+        const mx=gx2px(magnet.gx), my=gy2px(magnet.gy);
+        const cx=gx2px(car.x), cy=gy2px(car.y);
+        const d = Math.hypot(car.x-magnet.gx, car.y-magnet.gy);
+        if(d > MAG_RANGE) return;
+        const same = (selectedPole===world.carPole);
+        const col = same? '#ef4444':'#3b82f6';
+        let fromX,fromY,toX,toY;
+        if(same){ fromX=mx; fromY=my; toX=cx; toY=cy; } else { fromX=cx; fromY=cy; toX=mx; toY=my; }
+        const ang=Math.atan2(toY-fromY,toX-fromX);
+        const len=Math.hypot(toX-fromX,toY-fromY);
+        const ex=fromX+Math.cos(ang)*(len-cell*0.4), ey=fromY+Math.sin(ang)*(len-cell*0.4);
+        ctx.strokeStyle=col; ctx.lineWidth=4; ctx.lineCap='round';
+        ctx.beginPath();
+        const segs=Math.max(6,Math.floor(len/8));
+        for(let i=0;i<=segs;i++){
+            const t=i/segs; const bx=fromX+(ex-fromX)*t, by=fromY+(ey-fromY)*t;
+            const off=Math.sin(t*Math.PI*4 + performance.now()/120)*cell*0.06;
+            const ox=Math.cos(ang+Math.PI/2)*off, oy=Math.sin(ang+Math.PI/2)*off;
+            if(i===0) ctx.moveTo(bx+ox,by+oy); else ctx.lineTo(bx+ox,by+oy);
+        }
+        ctx.stroke();
+        ctx.fillStyle=col; ctx.beginPath(); ctx.moveTo(ex,ey);
+        ctx.lineTo(ex-Math.cos(ang-0.4)*cell*0.28, ey-Math.sin(ang-0.4)*cell*0.28);
+        ctx.lineTo(ex-Math.cos(ang+0.4)*cell*0.28, ey-Math.sin(ang+0.4)*cell*0.28);
+        ctx.closePath(); ctx.fill(); ctx.lineCap='butt';
+    }
+    function drawBall(b){
+        const x=gx2px(b.x), y=gy2px(b.y), R=BALL_R*cell;
+        ctx.fillStyle='rgba(0,0,0,0.18)'; ctx.beginPath(); ctx.ellipse(x,y+R*0.5,R*0.9,R*0.45,0,0,Math.PI*2); ctx.fill();
+        const grad=ctx.createRadialGradient(x-R*0.3,y-R*0.3,R*0.1,x,y,R);
+        grad.addColorStop(0,'#e5e7eb'); grad.addColorStop(0.5,'#9ca3af'); grad.addColorStop(1,'#4b5563');
+        ctx.fillStyle=grad; ctx.beginPath(); ctx.arc(x,y,R,0,Math.PI*2); ctx.fill();
+        ctx.strokeStyle='#374151'; ctx.lineWidth=1.5; ctx.stroke();
+        ctx.fillStyle='rgba(255,255,255,0.7)'; ctx.beginPath(); ctx.arc(x-R*0.32,y-R*0.32,R*0.18,0,Math.PI*2); ctx.fill();
+        ctx.font=`${R*0.7}px sans-serif`; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('🔩', x, y+R*0.15);
+    }
+    function drawCar(){
+        const x=gx2px(car.x), y=gy2px(car.y), R=CAR_R*cell;
+        const isN = world.carPole==='N';
+        const base = isN? '#dc2626':'#2563eb';
+        ctx.fillStyle='rgba(0,0,0,0.18)'; ctx.beginPath(); ctx.ellipse(x,y+R*0.55,R*0.95,R*0.5,0,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle='#fbbf24'; roundRect(x-R*0.95,y-R*0.6,R*1.9,R*1.2,R*0.4); ctx.fill();
+        ctx.fillStyle='#f59e0b'; roundRect(x-R*0.55,y-R*0.95,R*1.1,R*0.7,R*0.3); ctx.fill();
+        ctx.fillStyle='#1f2937';
+        [[-R*0.7,-R*0.7],[R*0.7,-R*0.7],[-R*0.7,R*0.7],[R*0.7,R*0.7]].forEach(([dx,dy])=>{ ctx.beginPath(); ctx.arc(x+dx,y+dy,R*0.26,0,Math.PI*2); ctx.fill(); });
+        ctx.fillStyle=base; ctx.beginPath(); ctx.arc(x,y,R*0.5,0,Math.PI*2); ctx.fill();
+        ctx.strokeStyle='#fff'; ctx.lineWidth=2; ctx.stroke();
+        ctx.fillStyle='#fff'; ctx.font=`900 ${R*0.6}px sans-serif`; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(world.carPole, x, y+1);
+    }
+
+    function loop(){ physicsStep(); draw(); requestAnimationFrame(loop); }
+
+    function startMode(m){
+        initAudio();
+        mode = m; stepIndex = 0; magnetUses = 0; starsCollected = 0; ratingSum = 0;
+        runStartTime = Date.now(); elapsedSec = 0;
+        document.getElementById('start-panel').classList.add('hidden');
+        document.getElementById('hud').classList.remove('hidden');
+        document.getElementById('control-bar').classList.remove('hidden');
+        hidePanels();
+        document.getElementById('reset-car-btn').style.display = 'block';
+        const hudMid = document.getElementById('hud-mid');
+
+        if(m==='endless'){
+            endlessTimeLeft=ENDLESS_TIME; endlessScore=0; endlessCleared=0;
+            hudMid.style.display='block';
+            document.getElementById('hud-mid-top').textContent='分數';
+            document.getElementById('hud-right-top').textContent='剩餘時間';
+            if(endlessTimer) clearInterval(endlessTimer);
+            endlessTimer = setInterval(()=>{ if(levelWon) return; endlessTimeLeft--; updateHUD(); if(endlessTimeLeft<=0){ clearInterval(endlessTimer); endlessGameOver(); } },1000);
+            loadEndlessLevel();
+        } else if(m==='campaign'){
+            hudMid.style.display='block';
+            document.getElementById('hud-mid-top').textContent='關卡';
+            document.getElementById('hud-right-top').textContent='用時';
+            if(campaignTimer) clearInterval(campaignTimer);
+            campaignTimer = setInterval(()=>{ if(levelWon) return; elapsedSec = Math.floor((Date.now()-runStartTime)/1000); updateHUD(); },500);
+            loadStepLevel();
+        } else {
+            hudMid.style.display='none';
+            document.getElementById('hud-right-top').textContent='進度';
+            loadStepLevel();
+        }
+        updateHUD(); computeLayout();
+    }
+
+    function loadStepLevel(){
+        const arr = (mode==='campaign')?CAMPAIGN_LEVELS:TUTORIAL_LEVELS;
+        const def = arr[stepIndex];
+        loadLevel(def);
+        showBanner(mode==='campaign'?`第 ${stepIndex+1} 關 / 5`:`教學 ${stepIndex+1} / 5`, def.tip);
+        updateHUD();
+    }
+    function loadEndlessLevel(){
+        const def = makeRandomLevel(endlessCleared);
+        loadLevel(def);
+        showBanner(`第 ${endlessCleared+1} 關`, def.tip);
+        updateHUD();
+    }
+
+    function makeRandomLevel(idx){
+        const cols = 8 + Math.min(4, Math.floor(idx/2));
+        const rows = 5 + Math.min(3, Math.floor(idx/3));
+        const grid = [];
+        for(let r=0;r<rows;r++){ let row=''; for(let c=0;c<cols;c++){ row += (r===0||r===rows-1||c===0||c===cols-1)?'#':'.'; } grid.push(row.split('')); }
+        grid[1][1]='C'; grid[rows-2][cols-2]='G';
+        const inner=[]; for(let r=1;r<rows-1;r++) for(let c=1;c<cols-1;c++){ if(grid[r][c]==='.') inner.push([r,c]); }
+        const shuffle=a=>{ for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; };
+        shuffle(inner);
+        const obstacles = Math.min(inner.length-6, 2+idx);
+        let placed=0;
+        for(const [r,c] of inner){
+            if(placed>=obstacles) break;
+            if((r<=2&&c<=2)||(r>=rows-3&&c>=cols-3)) continue;
+            const roll=Math.random(); grid[r][c] = roll<0.55?'W':(roll<0.8?'X':'B'); placed++;
+        }
+        const starCount = Math.min(1+Math.floor(idx/2), 4);
+        let s=0;
+        for(const [r,c] of inner){ if(s>=starCount) break; if(grid[r][c]==='.'){ grid[r][c]='O'; s++; } }
+        const pole = Math.random()<0.5?'N':'S';
+        return { pole, tip:'收集所有 ⭐ 讓終點解鎖，再把車送到 🏁！', map: grid.map(row=>row.join('')) };
+    }
+
+    function starRating(uses, def){
+        const stars=(def.map.join('').match(/O/g)||[]).length;
+        const balls=(def.map.join('').match(/B/g)||[]).length;
+        const par = 4 + stars*2 + balls*4;
+        if(uses <= par) return 3;
+        if(uses <= par*1.8) return 2;
+        return 1;
+    }
+    function starStr(n){ return '⭐'.repeat(n) + '<span style="opacity:.25">'+'⭐'.repeat(3-n)+'</span>'; }
+
+    function onLevelWin(){
+        if(levelWon) return;
+        levelWon = true; magnet=null;
+        playSound('win'); spawnConfetti();
+        if(mode==='endless'){
+            const bonus = 100 + endlessTimeLeft*2;
+            endlessScore += bonus; endlessCleared++;
+            endlessTimeLeft = Math.min(ENDLESS_CAP, endlessTimeLeft + ENDLESS_ADD);
+            showToast(`+${bonus} 分！ +${ENDLESS_ADD}秒`); updateHUD();
+            setTimeout(()=>{ if(mode==='endless'){ levelWon=false; loadEndlessLevel(); } }, 900);
+        } else if(mode==='campaign'){
+            const rating = starRating(levelUses, CAMPAIGN_LEVELS[stepIndex]); ratingSum += rating;
+            const last = stepIndex >= CAMPAIGN_LEVELS.length-1;
+            showResult(last?`🎉 第 5 關完成！`:`🎉 第 ${stepIndex+1} 關完成！`,
+                rating, last?'太厲害了，你掌握了磁力的祕密！':randomPraise(), last?'查看成績':`第 ${stepIndex+2} 關 →`);
+        } else {
+            const last = stepIndex >= TUTORIAL_LEVELS.length-1;
+            showResult(last?`🎓 教學完成！`:`✅ 第 ${stepIndex+1} 課完成！`, 0,
+                last?'你已學會 N/S 極、相吸相斥、磁性與非磁性物質，還有鐵球！出發挑戰吧。':randomPraise(),
+                last?'完成':'下一課 →');
+        }
+    }
+    function randomPraise(){ const a=['判斷得很準！','磁力運用得很好！','做得太棒了！','你越來越熟練了！','完美的一手！']; return a[Math.floor(Math.random()*a.length)]; }
+
+    function endlessGameOver(){
+        levelActive=false; playSound('over');
+        document.getElementById('control-bar').classList.add('hidden');
+        document.getElementById('hud').classList.add('hidden');
+        document.getElementById('mission-banner').classList.add('hidden');
+        document.getElementById('final-score').textContent = endlessScore;
+        document.getElementById('final-cleared').textContent = endlessCleared + ' 關';
+        document.getElementById('gameover-panel').classList.remove('hidden');
+        
+        // 【新增】上傳紀錄
+        sendDataToSheet(endlessScore);
+    }
+
+    function showResult(title, rating, msg, nextLabel){
+        const p = document.getElementById('result-panel');
+        document.getElementById('result-title').textContent = title;
+        document.getElementById('result-title').style.color = '#16a34a';
+        const starsEl = document.getElementById('result-stars');
+        if(rating>0){ starsEl.style.display='block'; starsEl.innerHTML = starStr(rating); }
+        else starsEl.style.display='none';
+        document.getElementById('result-msg').innerHTML = msg;
+        document.getElementById('next-btn').textContent = nextLabel;
+        p.classList.remove('hidden');
+    }
+    function handleNextBtn(){
+        document.getElementById('result-panel').classList.add('hidden');
+        levelWon=false;
+        if(mode==='tutorial'){
+            if(stepIndex >= TUTORIAL_LEVELS.length-1) returnToStart();
+            else { stepIndex++; loadStepLevel(); }
+        } else if(mode==='campaign'){
+            if(stepIndex >= CAMPAIGN_LEVELS.length-1) finishCampaign();
+            else { stepIndex++; loadStepLevel(); }
+        }
+    }
+
+    function finishCampaign(){
+        levelActive=false;
+        if(campaignTimer){ clearInterval(campaignTimer); campaignTimer=null; }
+        const totalTime = Math.floor((Date.now()-runStartTime)/1000);
+        document.getElementById('control-bar').classList.add('hidden');
+        document.getElementById('hud').classList.add('hidden');
+        document.getElementById('mission-banner').classList.add('hidden');
+        document.getElementById('campaign-total-time').textContent = totalTime+'s';
+        document.getElementById('campaign-stats').textContent = `${magnetUses} 次 ・ ${starsCollected} 顆`;
+        const totalStarPossible = CAMPAIGN_LEVELS.length*3;
+        document.getElementById('campaign-rating').innerHTML = `⭐ 評價 ${ratingSum} / ${totalStarPossible}`;
+        document.getElementById('campaign-complete-panel').classList.remove('hidden');
+        
+        // 【新增】上傳紀錄
+        sendDataToSheet(ratingSum);
+    }
+
+    function spawnConfetti(){
+        const colors=['#ef4444','#f59e0b','#22c55e','#3b82f6','#a855f7','#ec4899'];
+        const gx = world.goal? world.goal.x : world.cols/2, gy = world.goal? world.goal.y : world.rows/2;
+        for(let i=0;i<60;i++) particles.push({ x:gx, y:gy, vx:(Math.random()-0.5)*0.4, vy:-Math.random()*0.5-0.1, life:50+Math.random()*20, color:colors[Math.floor(Math.random()*colors.length)] });
+    }
+    function spawnBurst(gx,gy,colors){ for(let i=0;i<14;i++){ const a=Math.random()*Math.PI*2, s=Math.random()*0.25+0.05; particles.push({ x:gx, y:gy, vx:Math.cos(a)*s, vy:Math.sin(a)*s-0.1, life:30+Math.random()*15, color:colors[Math.floor(Math.random()*colors.length)] }); } }
+    function showToast(text){ const t=document.getElementById('toast'); t.textContent=text; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),1100); }
+    function showBanner(badge,text){
+        document.getElementById('mission-badge').textContent = badge;
+        document.getElementById('mission-instruction').textContent = text;
+        document.getElementById('mission-banner').classList.remove('hidden');
+        updateObjectiveUI();
+    }
+    function updateObjectiveUI(){
+        const el = document.getElementById('mission-objective');
+        if(!el) return;
+        const lock = world.allow ? `🔒 只能用 ${world.allow} 極磁棒 ` : '';
+        if(world.totalStars>0){
+            const got = world.totalStars - world.stars.length;
+            el.textContent = lock + (world.stars.length===0
+                ? `⭐ ${got}/${world.totalStars} ・ 🏁 終點已解鎖！`
+                : `⭐ ${got}/${world.totalStars} ・ 🔒 收齊星星解鎖終點`);
+        } else el.textContent = lock + '🏁 把車送到終點';
+    }
+    function updateHUD(){
+        if(mode==='endless'){
+            document.getElementById('hud-mid-val').textContent = endlessScore;
+            document.getElementById('hud-mid-sub').textContent = '過關 '+endlessCleared;
+            const tv=document.getElementById('hud-right-val'); tv.textContent = endlessTimeLeft+'s';
+            tv.style.color = endlessTimeLeft<=10?'#f87171':'#fff';
+        } else if(mode==='campaign'){
+            document.getElementById('hud-mid-val').textContent = (stepIndex+1)+'/5';
+            document.getElementById('hud-mid-sub').textContent = '🧲 '+magnetUses;
+            document.getElementById('hud-right-val').textContent = elapsedSec+'s';
+        } else {
+            document.getElementById('hud-right-val').textContent = (stepIndex+1)+'/5';
+        }
+    }
+    function hidePanels(){ ['result-panel','gameover-panel','campaign-complete-panel'].forEach(id=>document.getElementById(id).classList.add('hidden')); }
+    function confirmReturnHome(){ document.getElementById('return-confirm-modal').classList.remove('hidden'); }
+    function returnToStart(){
+        levelActive=false; levelWon=false; magnet=null;
+        if(campaignTimer){ clearInterval(campaignTimer); campaignTimer=null; }
+        if(endlessTimer){ clearInterval(endlessTimer); endlessTimer=null; }
+        world.cols=0;
+        document.getElementById('hud').classList.add('hidden');
+        document.getElementById('control-bar').classList.add('hidden');
+        document.getElementById('mission-banner').classList.add('hidden');
+        hidePanels();
+        document.getElementById('start-panel').classList.remove('hidden');
+    }
+
+    window.addEventListener('load', ()=>{
+        document.getElementById('campaign-btn').addEventListener('click', ()=>startMode('campaign'));
+        document.getElementById('endless-btn').addEventListener('click', ()=>startMode('endless'));
+        document.getElementById('tutorial-btn').addEventListener('click', ()=>startMode('tutorial'));
+
+        document.getElementById('next-btn').addEventListener('click', handleNextBtn);
+        document.getElementById('restart-game-btn').addEventListener('click', returnToStart);
+        document.getElementById('campaign-restart-btn').addEventListener('click', returnToStart);
+
+        document.getElementById('confirm-return-yes').addEventListener('click', ()=>{ document.getElementById('return-confirm-modal').classList.add('hidden'); returnToStart(); });
+        document.getElementById('confirm-return-no').addEventListener('click', ()=>document.getElementById('return-confirm-modal').classList.add('hidden'));
+
+        document.addEventListener('keydown', e=>{
+            if(!document.getElementById('result-panel').classList.contains('hidden') && e.key==='Enter'){ handleNextBtn(); return; }
+            if(levelActive){
+                if(e.key==='n'||e.key==='N') selectPole('N');
+                if(e.key==='s'||e.key==='S') selectPole('S');
+                if(e.key==='r'||e.key==='R') resetCarPosition();
+            }
+        });
+
+        resize(); loop();
+    });
+    window.addEventListener('resize', resize);
+    window.addEventListener('orientationchange', ()=>setTimeout(resize,300));
+
+    window.selectPole=selectPole; window.confirmReturnHome=confirmReturnHome; window.resetCarPosition=resetCarPosition;
+    </script>
+</body>
+</html>
