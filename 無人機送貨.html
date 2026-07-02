@@ -1,0 +1,1113 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>無人機座標任務 · Drone Coordinate Mission</title>
+<style>
+  :root{
+    --sky-top:#7ec8ff; --sky-bot:#cfeeff;
+    --ink:#0c2742; --ink-soft:#3a5a78;
+    --panel:#ffffff; --panel-2:#f2f8ff;
+    --line:#d4e6f5;
+    --brand:#ff8a2b;
+    --brand-2:#ffb45c;
+    --go:#19b86b;
+    --go-d:#0f9c58;
+    --target:#ff4d6d;
+    --pickup:#7b5cff;
+    --land:#1ea7ff;
+    --shadow:0 10px 30px rgba(12,39,66,.18);
+    --r:18px;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;height:100%;overflow:hidden;}
+  body{
+    font-family:"Baloo 2","Nunito",-apple-system,"PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
+    color:var(--ink); background:#bfe6ff; user-select:none;
+  }
+  #scene{position:fixed;inset:0;display:block;}
+  .nofx{transition:none!important;}
+
+  #topbar{
+    position:fixed;top:0;left:0;right:0;z-index:20;
+    display:flex;align-items:center;gap:10px;
+    padding:10px 14px;
+    background:linear-gradient(180deg,rgba(255,255,255,.95),rgba(255,255,255,.78));
+    backdrop-filter:blur(8px);
+    border-bottom:2px solid var(--line);
+  }
+  #topbar .brand{font-weight:800;font-size:18px;letter-spacing:.5px;color:var(--ink);
+    display:flex;align-items:center;gap:8px;white-space:nowrap;}
+  #topbar .brand .ico{font-size:22px;}
+  .pill{
+    background:var(--panel-2);border:2px solid var(--line);border-radius:999px;
+    padding:5px 12px;font-weight:800;font-size:14px;color:var(--ink-soft);white-space:nowrap;
+  }
+  .pill b{color:var(--ink);}
+  .spacer{flex:1;}
+  .tbtn{
+    border:2px solid var(--line);background:#fff;border-radius:12px;
+    width:38px;height:38px;font-size:18px;font-weight:800;color:var(--ink-soft);cursor:pointer;
+  }
+  .tbtn:active{transform:translateY(1px);}
+
+  #missionPanel{
+    position:fixed;left:14px;top:64px;z-index:15;width:268px;max-width:46vw;
+    background:var(--panel);border:2px solid var(--line);border-radius:var(--r);
+    box-shadow:var(--shadow);overflow:hidden;
+  }
+  #missionPanel .head{
+    background:linear-gradient(120deg,var(--brand),var(--brand-2));
+    color:#fff;padding:11px 14px;font-weight:800;font-size:15px;
+    display:flex;align-items:center;gap:8px;
+  }
+  #missionPanel .body{padding:10px 12px;max-height:42vh;overflow:auto;}
+  .task{
+    display:flex;gap:9px;align-items:flex-start;
+    padding:9px 10px;border-radius:12px;margin-bottom:7px;
+    background:var(--panel-2);border:2px solid transparent;font-size:14px;line-height:1.3;
+  }
+  .task .dot{
+    flex:none;width:24px;height:24px;border-radius:8px;display:grid;place-items:center;
+    font-size:14px;color:#fff;font-weight:800;
+  }
+  .task.t-pickup .dot{background:var(--pickup);}
+  .task.t-deliver .dot{background:var(--target);}
+  .task.t-land .dot{background:var(--land);}
+  .task .txt b{font-variant-numeric:tabular-nums;}
+  .task.done{opacity:.55;}
+  .task.done .txt{text-decoration:line-through;}
+  .task.current{
+    border-color:var(--brand);background:#fff;
+    box-shadow:0 0 0 3px rgba(255,138,43,.15);
+    animation:pulseTask 1.6s ease-in-out infinite;
+  }
+  @keyframes pulseTask{50%{box-shadow:0 0 0 7px rgba(255,138,43,.05);}}
+  .coordHidden{color:var(--ink-soft);font-style:italic;}
+
+  #mapWrap{
+    position:fixed;right:14px;top:64px;z-index:15;
+    background:var(--panel);border:2px solid var(--line);border-radius:var(--r);
+    box-shadow:var(--shadow);padding:10px;
+  }
+  #mapWrap .maphead{font-weight:800;font-size:13px;color:var(--ink-soft);
+    margin:0 2px 7px;display:flex;align-items:center;gap:6px;}
+  #minimap{display:block;border-radius:10px;background:#eaf6ff;}
+
+  #control{
+    position:fixed;left:50%;bottom:14px;transform:translateX(-50%);z-index:18;
+    width:min(620px,calc(100% - 24px));
+    background:var(--panel);border:2px solid var(--line);border-radius:22px;
+    box-shadow:var(--shadow);padding:12px 14px;
+  }
+  #status{
+    text-align:center;font-weight:800;font-size:15px;color:var(--ink-soft);
+    min-height:20px;margin-bottom:8px;
+  }
+  #status .live{color:var(--brand);}
+  .ctrlRow{display:flex;gap:10px;align-items:stretch;}
+  .coordBox{
+    flex:1;display:flex;gap:8px;
+  }
+  .field{
+    flex:1;background:var(--panel-2);border:3px solid var(--line);border-radius:14px;
+    padding:6px 10px;cursor:pointer;transition:border-color .15s,background .15s;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:0;
+  }
+  .field .lab{font-size:12px;font-weight:800;color:var(--ink-soft);letter-spacing:.5px;}
+  .field .val{font-size:30px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums;
+    color:var(--ink);min-height:32px;}
+  .field.xf{border-color:#9ecbff;}
+  .field.yf{border-color:#ffd86b;}
+  .field.active{background:#fff;box-shadow:0 0 0 4px rgba(255,138,43,.18);border-color:var(--brand);}
+  .goBtn{
+    flex:none;width:104px;border:none;border-radius:16px;cursor:pointer;
+    background:linear-gradient(180deg,var(--go),var(--go-d));color:#fff;
+    font-weight:800;font-size:17px;display:flex;flex-direction:column;align-items:center;
+    justify-content:center;gap:2px;box-shadow:0 6px 0 #0c8049;
+  }
+  .goBtn .ico{font-size:22px;}
+  .goBtn:active{transform:translateY(4px);box-shadow:0 2px 0 #0c8049;}
+  .goBtn:disabled{filter:grayscale(.6);opacity:.6;box-shadow:0 6px 0 #6b8c79;cursor:not-allowed;}
+
+  #keypad{display:grid;grid-template-columns:repeat(5,1fr);gap:7px;margin-top:10px;}
+  .key{
+    border:2px solid var(--line);background:#fff;border-radius:12px;
+    padding:10px 0;font-size:20px;font-weight:800;color:var(--ink);cursor:pointer;
+  }
+  .key.fn{background:var(--panel-2);color:var(--ink-soft);font-size:16px;}
+  .key:active{transform:translateY(2px);background:var(--panel-2);}
+
+  #toast{
+    position:fixed;left:50%;top:30%;transform:translate(-50%,-50%) scale(.8);
+    z-index:40;pointer-events:none;opacity:0;
+    background:rgba(12,39,66,.92);color:#fff;font-weight:800;font-size:17px;
+    padding:14px 22px;border-radius:16px;max-width:80vw;text-align:center;
+    transition:opacity .25s,transform .25s;
+  }
+  #toast.show{opacity:1;transform:translate(-50%,-50%) scale(1);}
+  #toast.good{background:rgba(25,184,107,.95);}
+  #toast.bad{background:rgba(255,77,109,.95);}
+
+  .screen{
+    position:fixed;inset:0;z-index:60;display:none;place-items:center;
+    background:radial-gradient(120% 120% at 50% 0%,rgba(126,200,255,.6),rgba(12,39,66,.75));
+    backdrop-filter:blur(3px);padding:18px;
+  }
+  .screen.show{display:grid;}
+  .card{
+    width:min(560px,100%);background:var(--panel);border-radius:24px;
+    box-shadow:0 30px 80px rgba(0,0,0,.35);padding:26px 24px;text-align:center;
+    border:3px solid #fff;animation:pop .35s ease;
+  }
+  @keyframes pop{from{transform:scale(.9);opacity:0;}}
+  .card h1{margin:.1em 0 .15em;font-size:28px;}
+  .card h2{margin:.1em 0;font-size:24px;color:var(--brand);}
+  .card p{color:var(--ink-soft);font-size:15px;line-height:1.55;margin:.5em 0;}
+  .card .big{font-size:54px;margin:.1em 0;}
+  .card .btn{
+    margin-top:14px;border:none;border-radius:16px;cursor:pointer;
+    background:linear-gradient(180deg,var(--brand),var(--brand-2));color:#fff;
+    font-weight:800;font-size:19px;padding:13px 26px;box-shadow:0 6px 0 #d96a13;
+  }
+  .card .btn:active{transform:translateY(4px);box-shadow:0 2px 0 #d96a13;}
+  .card .btn.alt{background:linear-gradient(180deg,var(--land),#0f8bdd);box-shadow:0 6px 0 #0a6aa8;}
+  .card .btn.alt:active{box-shadow:0 2px 0 #0a6aa8;}
+  .how{
+    text-align:left;background:var(--panel-2);border:2px solid var(--line);
+    border-radius:16px;padding:14px 16px;margin:14px 0;font-size:14.5px;color:var(--ink);line-height:1.7;
+  }
+  .how b{color:var(--brand);}
+  .legend{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;margin-top:6px;font-size:13px;color:var(--ink-soft);}
+  .legend span{display:inline-flex;align-items:center;gap:5px;}
+  .sw{width:14px;height:14px;border-radius:5px;display:inline-block;}
+  .stars{font-size:38px;letter-spacing:6px;}
+
+  @media (max-width:560px){
+    #missionPanel{width:200px;top:60px;left:10px;}
+    #mapWrap{top:60px;right:10px;padding:7px;}
+    #topbar .brand span.sub{display:none;}
+    .goBtn{width:84px;}
+    .field .val{font-size:26px;}
+  }
+  @media (max-width:380px){
+    #missionPanel{display:none;}
+  }
+</style>
+</head>
+<body>
+<canvas id="scene"></canvas>
+
+<div id="topbar">
+  <div class="brand"><span class="ico">🚁</span><span>無人機派送 <span class="sub">· 座標任務</span></span></div>
+  <div class="spacer"></div>
+  <div class="pill">第 <b id="lvNum">1</b> / 10 關</div>
+  <div class="pill">⭐ <b id="starTotal">0</b></div>
+  <button class="tbtn" id="btnHelp" title="玩法">？</button>
+  <button class="tbtn" id="btnPrev" title="上一關">◀</button>
+  <button class="tbtn" id="btnNext" title="下一關">▶</button>
+</div>
+
+<div id="missionPanel">
+  <div class="head">📋 任務清單 <span id="lvName" style="font-weight:700;opacity:.9;font-size:13px;"></span></div>
+  <div class="body" id="taskList"></div>
+</div>
+
+<div id="mapWrap">
+  <div class="maphead">🗺️ 城市地圖（讀座標）</div>
+  <canvas id="minimap" width="190" height="190"></canvas>
+</div>
+
+<div id="control">
+  <div id="status">輸入座標，然後按起飛 ✈️</div>
+  <div class="ctrlRow">
+    <div class="coordBox">
+      <div class="field xf active" id="fieldX" data-f="x">
+        <div class="lab">X（橫）</div><div class="val" id="valX">0</div>
+      </div>
+      <div class="field yf" id="fieldY" data-f="y">
+        <div class="lab">Y（直）</div><div class="val" id="valY">0</div>
+      </div>
+    </div>
+    <button class="goBtn" id="btnGo"><span class="ico">🚀</span>起飛</button>
+  </div>
+  <div id="keypad"></div>
+</div>
+
+<div id="toast"></div>
+
+<div class="screen show" id="startScreen">
+  <div class="card">
+    <div class="big">🚁📦</div>
+    <h1>無人機派送 · 座標任務</h1>
+    <p>你是城市無人機機師！用 <b style="color:var(--brand)">(X , Y)</b> 座標，<br>把物資送到指定的高樓大廈頂，最後安全降落。</p>
+    <div class="how">
+      <div>① 看任務板，找出要去的 <b>座標</b>。</div>
+      <div>② 在下方輸入 <b>X（橫向）</b> 同 <b>Y（直向）</b>。</div>
+      <div>③ 按 <b>🚀 起飛</b>，無人機就會飛去嗰個位置。</div>
+      <div>④ 做完所有任務，再飛去藍色 <b>降落點</b>，過關！</div>
+    </div>
+    <div class="legend">
+      <span><i class="sw" style="background:var(--pickup)"></i>提取物資</span>
+      <span><i class="sw" style="background:var(--target)"></i>放下物資</span>
+      <span><i class="sw" style="background:var(--land)"></i>降落點</span>
+    </div>
+    <button class="btn" id="btnStart">開始任務</button>
+  </div>
+</div>
+
+<div class="screen" id="winScreen">
+  <div class="card">
+    <div class="big">🎉</div>
+    <h2 id="winTitle">任務完成！</h2>
+    <div class="stars" id="winStars">⭐⭐⭐</div>
+    <p id="winMsg">做得好！準備好就挑戰下一關。</p>
+    <button class="btn" id="btnContinue">下一關 ▶</button>
+  </div>
+</div>
+
+<div class="screen" id="finalScreen">
+  <div class="card">
+    <div class="big">🏆🚁</div>
+    <h1>恭喜！你係座標派送大師！</h1>
+    <p>你完成咗全部 10 關任務，總共拎到 <b id="finalStars" style="color:var(--brand);font-size:20px;">0</b> 粒星 ⭐</p>
+    <p>你已經學識點樣用 (X , Y) 座標準確定位喇！</p>
+    <button class="btn alt" id="btnRestartAll">由頭再玩</button>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// 【新增】接收主網頁傳來的學生資料
+const urlParams = new URLSearchParams(window.location.search);
+const studentClass = urlParams.get('class') || '未設定班別';
+const studentId = urlParams.get('id') || '未設定學號';
+const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwHKY-YDXziCb0eCZtW-GQ9MGUQshKIIJk1qJgX7TPqTL1YwThCrvCld5YNSH9CSwpPew/exec";
+
+// 【新增】上傳紀錄函數
+async function sendDataToSheet(finalScore) {
+    const data = {
+        gameName: '無人機送貨',
+        studentClass: studentClass,
+        studentId: studentId,
+        playDate: new Date().toLocaleDateString('zh-HK'),
+        playTime: '完成',
+        score: finalScore
+    };
+    try {
+        await fetch(GAS_WEB_APP_URL, { method: 'POST', body: JSON.stringify(data), headers: { 'Content-Type': 'text/plain;charset=utf-8' }});
+    } catch (e) { console.error(e); }
+}
+
+const CELL = 4;                 
+const LEVELS = [
+  { name:"新手起飛",   grid:5,  show:true,  tasks:[ {t:'deliver',x:3,y:2} ],                               land:{x:0,y:0} },
+  { name:"連續兩送",   grid:5,  show:true,  tasks:[ {t:'deliver',x:2,y:4},{t:'deliver',x:4,y:1} ],          land:{x:0,y:0} },
+  { name:"先取後送",   grid:6,  show:true,  tasks:[ {t:'pickup',x:1,y:3},{t:'deliver',x:5,y:2} ],            land:{x:0,y:0} },
+  { name:"換個降落點", grid:7,  show:true,  tasks:[ {t:'pickup',x:2,y:5},{t:'deliver',x:6,y:3} ],            land:{x:4,y:6} },
+  { name:"三個目標",   grid:8,  show:true,  tasks:[ {t:'pickup',x:1,y:1},{t:'deliver',x:7,y:5},{t:'deliver',x:4,y:7} ], land:{x:0,y:0} },
+  { name:"自己讀地圖", grid:8,  show:false, tasks:[ {t:'deliver',x:6,y:2},{t:'deliver',x:3,y:7} ],            land:{x:7,y:7} },
+  { name:"大城市",     grid:10, show:false, tasks:[ {t:'pickup',x:2,y:8},{t:'deliver',x:9,y:4},{t:'deliver',x:5,y:1} ], land:{x:0,y:0} },
+  { name:"忙碌派送",   grid:10, show:false, tasks:[ {t:'pickup',x:1,y:6},{t:'pickup',x:8,y:2},{t:'deliver',x:4,y:9},{t:'deliver',x:7,y:7} ], land:{x:0,y:0} },
+  { name:"穿梭全城",   grid:10, show:false, tasks:[ {t:'pickup',x:3,y:3},{t:'deliver',x:9,y:9},{t:'pickup',x:6,y:1},{t:'deliver',x:1,y:8} ], land:{x:5,y:5} },
+  { name:"終極任務",   grid:10, show:false, tasks:[ {t:'pickup',x:2,y:2},{t:'deliver',x:9,y:1},{t:'pickup',x:4,y:7},{t:'deliver',x:8,y:8},{t:'deliver',x:1,y:9} ], land:{x:0,y:0} },
+];
+
+let scene, camera, renderer, clock;
+let levelGroup, drone, rotors=[], carriedGroup;
+let azimuth = 0, polar = 0.92, camRadius = 60;  
+let center = new THREE.Vector3();
+let gridN = 5;
+let state = {
+  lv:0, taskIdx:0, attempts:0, hintUsed:false,
+  flying:false, landed:false, totalStars: 0,
+  done:false
+};
+let activeField = 'x';
+let inputX = '0', inputY = '0';
+let flight = null;     
+let markers = {};      
+let droneTiltTarget = {x:0,z:0};
+
+function initThree(){
+  const canvas = document.getElementById('scene');
+  renderer = new THREE.WebGLRenderer({canvas, antialias:true});
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+  renderer.setSize(window.innerWidth, window.innerHeight);
+
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x9fd8ff);
+  scene.fog = new THREE.Fog(0xbfe6ff, 90, 260);
+
+  camera = new THREE.PerspectiveCamera(48, window.innerWidth/window.innerHeight, 0.1, 600);
+
+  const hemi = new THREE.HemisphereLight(0xffffff, 0x88aabb, 0.85);
+  scene.add(hemi);
+  const sun = new THREE.DirectionalLight(0xfff4e0, 0.85);
+  sun.position.set(40, 90, 30);
+  scene.add(sun);
+  const fill = new THREE.DirectionalLight(0xbfe0ff, 0.3);
+  fill.position.set(-30, 40, -20);
+  scene.add(fill);
+
+  clock = new THREE.Clock();
+
+  window.addEventListener('resize', onResize);
+  setupOrbit(canvas);
+  animate();
+}
+
+function onResize(){
+  camera.aspect = window.innerWidth/window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+}
+
+function setupOrbit(canvas){
+  let dragging=false, lastX=0, lastY=0;
+  const down=(x,y)=>{dragging=true;lastX=x;lastY=y;};
+  const move=(x,y)=>{
+    if(!dragging) return;
+    azimuth -= (x-lastX)*0.006;
+    polar   -= (y-lastY)*0.004;
+    polar = Math.max(0.45, Math.min(1.30, polar));
+    lastX=x; lastY=y;
+  };
+  const up=()=>{dragging=false;};
+  canvas.addEventListener('mousedown',e=>down(e.clientX,e.clientY));
+  window.addEventListener('mousemove',e=>move(e.clientX,e.clientY));
+  window.addEventListener('mouseup',up);
+  canvas.addEventListener('touchstart',e=>{if(e.touches[0])down(e.touches[0].clientX,e.touches[0].clientY);},{passive:true});
+  canvas.addEventListener('touchmove',e=>{if(e.touches[0])move(e.touches[0].clientX,e.touches[0].clientY);},{passive:true});
+  canvas.addEventListener('touchend',up);
+  canvas.addEventListener('wheel',e=>{
+    e.preventDefault();
+    camRadius = Math.max(28, Math.min(140, camRadius + e.deltaY*0.05));
+  },{passive:false});
+}
+
+function updateCamera(){
+  const sp = Math.sin(polar);
+  camera.position.set(
+    center.x + camRadius*sp*Math.sin(azimuth),
+    center.y + camRadius*Math.cos(polar),
+    center.z + camRadius*sp*Math.cos(azimuth)
+  );
+  camera.lookAt(center);
+}
+
+function makeTextSprite(text, opts={}){
+  const fs = opts.fs||60, color=opts.color||'#0c2742', bg=opts.bg||null, pad=opts.pad||16;
+  const cv=document.createElement('canvas'); const ctx=cv.getContext('2d');
+  ctx.font=`800 ${fs}px "Baloo 2", system-ui, sans-serif`;
+  const w=ctx.measureText(text).width;
+  cv.width=w+pad*2; cv.height=fs+pad*2;
+  const c=cv.getContext('2d');
+  c.font=`800 ${fs}px "Baloo 2", system-ui, sans-serif`;
+  if(bg){ c.fillStyle=bg; roundRect(c,0,0,cv.width,cv.height,18); c.fill(); }
+  c.fillStyle=color; c.textBaseline='middle'; c.textAlign='center';
+  c.lineWidth=fs*0.14; c.strokeStyle='#ffffff';
+  c.strokeText(text,cv.width/2,cv.height/2);
+  c.fillText(text,cv.width/2,cv.height/2);
+  const tex=new THREE.CanvasTexture(cv);
+  const mat=new THREE.SpriteMaterial({map:tex,transparent:true,depthWrite:false});
+  const sp=new THREE.Sprite(mat);
+  sp.scale.set(cv.width/cv.height*(opts.scale||3), (opts.scale||3), 1);
+  return sp;
+}
+function roundRect(c,x,y,w,h,r){
+  c.beginPath();c.moveTo(x+r,y);c.arcTo(x+w,y,x+w,y+h,r);
+  c.arcTo(x+w,y+h,x,y+h,r);c.arcTo(x,y+h,x,y,r);c.arcTo(x,y,x+w,y,r);c.closePath();
+}
+
+let WINDOW_TEX=null;
+function windowTexture(){
+  if(WINDOW_TEX) return WINDOW_TEX;
+  const cv=document.createElement('canvas'); cv.width=64; cv.height=64;
+  const c=cv.getContext('2d');
+  c.fillStyle='#ffffff'; c.fillRect(0,0,64,64);
+  c.fillStyle='#cfe0ee';
+  for(let y=8;y<64;y+=16){ for(let x=8;x<64;x+=16){ c.fillRect(x,y,9,11); } }
+  const t=new THREE.CanvasTexture(cv);
+  t.wrapS=t.wrapT=THREE.RepeatWrapping;
+  WINDOW_TEX=t; return t;
+}
+
+function buildLevel(idx){
+  state.lv=idx; state.taskIdx=0; state.attempts=0; state.hintUsed=false;
+  state.flying=false; state.landed=false; state.done=false;
+  const cfg=LEVELS[idx];
+  gridN=cfg.grid;
+  inputX='0'; inputY='0'; activeField='x';
+  markers={};
+
+  if(levelGroup){ scene.remove(levelGroup); disposeGroup(levelGroup); }
+  levelGroup=new THREE.Group(); scene.add(levelGroup);
+  flight=null; state.carry=0;          
+
+  const span=gridN*CELL;
+  center.set(span/2,2,-span/2);
+  camRadius = span*1.55 + 24;
+
+  buildGround(span);
+  buildGridLines();
+  buildAxisLabels();
+
+  const special = {};
+  const key=(x,y)=>x+'_'+y;
+  cfg.tasks.forEach(t=> special[key(t.x,t.y)] = t.t );
+  special[key(cfg.land.x,cfg.land.y)] = special[key(cfg.land.x,cfg.land.y)] || 'land';
+  special[key(0,0)] = special[key(0,0)] || 'base';
+
+  buildCity(special);
+
+  cfg.tasks.forEach((t,i)=>{
+    const w=worldOf(t.x,t.y);
+    if(t.t==='deliver'){
+      const b=makeTargetBuilding(t.x,t.y);
+      levelGroup.add(b.group);
+      markers[key(t.x,t.y)]=b;
+    }else{
+      const d=makeDepot(t.x,t.y);
+      levelGroup.add(d.group);
+      markers[key(t.x,t.y)]=d;
+    }
+  });
+  const lp=makePad(cfg.land.x,cfg.land.y,'land');
+  levelGroup.add(lp.group); markers['land']=lp;
+  if(!(cfg.land.x===0&&cfg.land.y===0)){
+    const base=makePad(0,0,'base'); levelGroup.add(base.group); markers['base']=base;
+  }
+
+  buildDrone();
+  const home=worldOf(0,0);
+  drone.position.set(home.x, 1.2, home.z);
+  drone.userData.baseY=1.2;
+
+  renderTaskList();
+  setStatus('輸入座標，然後按 🚀 起飛');
+  setControlsEnabled(true);            
+  document.getElementById('lvNum').textContent=idx+1;
+  document.getElementById('lvName').textContent='· '+cfg.name;
+  setInputs('0','0'); setActiveField('x');
+  updateMinimap();
+}
+
+function worldOf(gx,gy){ return new THREE.Vector3(gx*CELL, 0, -gy*CELL); }
+
+function buildGround(span){
+  const g=new THREE.PlaneGeometry(span+CELL*8, span+CELL*8);
+  const m=new THREE.MeshStandardMaterial({color:0x6fae5a, roughness:1});
+  const ground=new THREE.Mesh(g,m);
+  ground.rotation.x=-Math.PI/2;
+  ground.position.set(span/2,-0.02,-span/2);
+  levelGroup.add(ground);
+  const pg=new THREE.PlaneGeometry(span,span);
+  const pm=new THREE.MeshStandardMaterial({color:0xdfeefc, roughness:.95});
+  const pad=new THREE.Mesh(pg,pm);
+  pad.rotation.x=-Math.PI/2; pad.position.set(span/2,0,-span/2);
+  levelGroup.add(pad);
+}
+
+function buildGridLines(){
+  const span=gridN*CELL;
+  const mat=new THREE.LineBasicMaterial({color:0x9bc3e6});
+  const pts=[];
+  for(let i=0;i<=gridN;i++){
+    pts.push(new THREE.Vector3(i*CELL,0.03,0), new THREE.Vector3(i*CELL,0.03,-span));
+    pts.push(new THREE.Vector3(0,0.03,-i*CELL), new THREE.Vector3(span,0.03,-i*CELL));
+  }
+  const geo=new THREE.BufferGeometry().setFromPoints(pts);
+  levelGroup.add(new THREE.LineSegments(geo,mat));
+
+  const amat=new THREE.LineBasicMaterial({color:0x2b5d86});
+  const ap=[ new THREE.Vector3(0,0.05,0),new THREE.Vector3(span,0.05,0),
+             new THREE.Vector3(0,0.05,0),new THREE.Vector3(0,0.05,-span) ];
+  levelGroup.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(ap),amat));
+}
+
+function buildAxisLabels(){
+  for(let i=0;i<=gridN;i++){
+    const sx=makeTextSprite(String(i),{fs:54,color:'#1769d8',scale:2.4});
+    sx.position.set(i*CELL, 0.6, CELL*0.7); levelGroup.add(sx);     
+    const sy=makeTextSprite(String(i),{fs:54,color:'#c98400',scale:2.4});
+    sy.position.set(-CELL*0.7, 0.6, -i*CELL); levelGroup.add(sy);   
+  }
+  const span=gridN*CELL;
+  buildAxisArrow('x', span, 0x2b7fff);   
+  buildAxisArrow('y', span, 0xffc107);   
+  const lx=makeTextSprite('X',{fs:64,color:'#1769d8',scale:3.0,bg:'rgba(255,255,255,.9)'});
+  lx.position.set(span+CELL*1.4, 1.4, 0); levelGroup.add(lx);
+  const ly=makeTextSprite('Y',{fs:64,color:'#c98400',scale:3.0,bg:'rgba(255,255,255,.9)'});
+  ly.position.set(0, 1.4, -(span+CELL*1.4)); levelGroup.add(ly);
+  const o=makeTextSprite('(0,0)',{fs:46,color:'#2b5d86',scale:2.2,bg:'rgba(255,255,255,.85)'});
+  o.position.set(-CELL*0.6,1.0,CELL*0.6); levelGroup.add(o);
+}
+
+function buildAxisArrow(axis, span, color){
+  const mat=new THREE.MeshStandardMaterial({color, roughness:.5});
+  const len=span+CELL*0.9;
+  const shaft=new THREE.Mesh(new THREE.CylinderGeometry(0.18,0.18,len,12),mat);
+  const head=new THREE.Mesh(new THREE.ConeGeometry(0.55,1.4,16),mat);
+  if(axis==='x'){
+    shaft.rotation.z=-Math.PI/2; shaft.position.set(len/2,0.12,0);
+    head.rotation.z=-Math.PI/2;  head.position.set(len+0.7,0.12,0);
+  }else{
+    shaft.rotation.x=Math.PI/2;  shaft.position.set(0,0.12,-len/2);
+    head.rotation.x=-Math.PI/2;  head.position.set(0,0.12,-(len+0.7));  
+  }
+  levelGroup.add(shaft); levelGroup.add(head);
+}
+
+function buildCity(special){
+  const palette=[0x8fb6d6,0xa9c5dc,0x9ec4b8,0xc2c9d6,0xb7cbe0,0xd6c2b0];
+  let seed=(state.lv+1)*99991;
+  const rnd=()=>{ seed=(seed*1103515245+12345)&0x7fffffff; return (seed>>8)/0x7fffff; };
+  for(let x=0;x<=gridN;x++){
+    for(let y=0;y<=gridN;y++){
+      if(special[x+'_'+y]) continue;
+      if(rnd()<0.42){
+        const h=3+Math.floor(rnd()*4)*2.4;
+        const col=palette[Math.floor(rnd()*palette.length)];
+        levelGroup.add(makeBuilding(x,y,h,col,0.62+rnd()*0.16));
+      }
+    }
+  }
+}
+
+function makeBuilding(gx,gy,h,color,size){
+  const w=worldOf(gx,gy);
+  const geo=new THREE.BoxGeometry(CELL*size,h,CELL*size);
+  const tex=windowTexture(); 
+  const mat=new THREE.MeshStandardMaterial({color, map:tex, roughness:.85, metalness:.05});
+  const m=mat.clone(); m.map=tex;
+  const mesh=new THREE.Mesh(geo,m);
+  mesh.position.set(w.x,h/2,w.z);
+  return mesh;
+}
+
+function makeTargetBuilding(gx,gy){
+  const g=new THREE.Group();
+  const h=11;
+  const bld=makeBuilding(gx,gy,h,0xb9477a,0.66);
+  bld.material.color.set(0xc95e8b);
+  g.add(bld);
+  const w=worldOf(gx,gy);
+  const ring=new THREE.Mesh(
+    new THREE.RingGeometry(CELL*0.18,CELL*0.30,28),
+    new THREE.MeshBasicMaterial({color:0xff4d6d,side:THREE.DoubleSide})
+  );
+  ring.rotation.x=-Math.PI/2; ring.position.set(w.x,h+0.1,w.z);
+  g.add(ring);
+  const beacon=new THREE.Group();
+  const post=new THREE.Mesh(new THREE.CylinderGeometry(0.1,0.1,2.4,8),
+    new THREE.MeshStandardMaterial({color:0xff4d6d}));
+  post.position.y=h+1.5;
+  const flag=new THREE.Mesh(new THREE.SphereGeometry(0.55,16,16),
+    new THREE.MeshStandardMaterial({color:0xff4d6d,emissive:0xff4d6d,emissiveIntensity:.4}));
+  flag.position.y=h+2.7;
+  beacon.add(post,flag); beacon.position.set(w.x,0,w.z);
+  g.add(beacon);
+  return {group:g, ring, beacon, roofY:h, gx, gy, type:'deliver'};
+}
+
+function makeDepot(gx,gy){
+  const g=new THREE.Group(); const w=worldOf(gx,gy);
+  const base=new THREE.Mesh(new THREE.BoxGeometry(CELL*0.8,2.2,CELL*0.8),
+    new THREE.MeshStandardMaterial({color:0x7b5cff,roughness:.8}));
+  base.position.set(w.x,1.1,w.z); g.add(base);
+  const crate=makeCrate();
+  crate.position.set(w.x,2.6,w.z); g.add(crate);
+  const post=new THREE.Mesh(new THREE.CylinderGeometry(0.1,0.1,2,8),
+    new THREE.MeshStandardMaterial({color:0x7b5cff}));
+  post.position.set(w.x,3.8,w.z); g.add(post);
+  const ball=new THREE.Mesh(new THREE.SphereGeometry(0.5,16,16),
+    new THREE.MeshStandardMaterial({color:0x9b82ff,emissive:0x7b5cff,emissiveIntensity:.4}));
+  ball.position.set(w.x,4.9,w.z); g.add(ball);
+  return {group:g, crate, beacon:post, gx, gy, type:'pickup'};
+}
+
+function makeCrate(){
+  const grp=new THREE.Group();
+  const box=new THREE.Mesh(new THREE.BoxGeometry(1.4,1.4,1.4),
+    new THREE.MeshStandardMaterial({color:0xe0a050,roughness:.7}));
+  grp.add(box);
+  const tape=new THREE.Mesh(new THREE.BoxGeometry(1.46,0.28,1.46),
+    new THREE.MeshStandardMaterial({color:0xc8822f}));
+  grp.add(tape);
+  return grp;
+}
+
+function makePad(gx,gy,kind){
+  const g=new THREE.Group(); const w=worldOf(gx,gy);
+  const col = kind==='land'?0x1ea7ff:0x5a7a92;
+  const pad=new THREE.Mesh(new THREE.CylinderGeometry(CELL*0.42,CELL*0.46,0.5,32),
+    new THREE.MeshStandardMaterial({color:col,roughness:.6}));
+  pad.position.set(w.x,0.25,w.z); g.add(pad);
+  const inner=new THREE.Mesh(new THREE.CylinderGeometry(CELL*0.30,CELL*0.30,0.55,32),
+    new THREE.MeshStandardMaterial({color:0xffffff,roughness:.8}));
+  inner.position.set(w.x,0.3,w.z); g.add(inner);
+  const letter = makeTextSprite(kind==='land'?'H':'⌂',{fs:80,color:kind==='land'?'#0b6fb0':'#3a5a78',scale:2.6});
+  letter.position.set(w.x,2.4,w.z); g.add(letter);
+  let ring=null;
+  if(kind==='land'){
+    ring=new THREE.Mesh(new THREE.RingGeometry(CELL*0.5,CELL*0.62,32),
+      new THREE.MeshBasicMaterial({color:0x1ea7ff,side:THREE.DoubleSide,transparent:true,opacity:.5}));
+    ring.rotation.x=-Math.PI/2; ring.position.set(w.x,0.55,w.z); g.add(ring);
+  }
+  return {group:g, ring, gx, gy, type:kind};
+}
+
+function buildDrone(){
+  if(drone){ scene.remove(drone); disposeGroup(drone); }
+  drone=new THREE.Group(); rotors=[];
+  const dark=new THREE.MeshStandardMaterial({color:0x2c3a4a,roughness:.6,metalness:.3});
+  const accent=new THREE.MeshStandardMaterial({color:0xff8a2b,roughness:.5});
+
+  const body=new THREE.Mesh(new THREE.BoxGeometry(1.7,0.55,1.2),dark);
+  drone.add(body);
+  const top=new THREE.Mesh(new THREE.BoxGeometry(1.1,0.3,0.8),accent);
+  top.position.y=0.4; drone.add(top);
+  const cam=new THREE.Mesh(new THREE.SphereGeometry(0.28,16,16),
+    new THREE.MeshStandardMaterial({color:0x101820,metalness:.6,roughness:.2}));
+  cam.position.set(0,-0.35,0.4); drone.add(cam);
+
+  const armMat=dark;
+  const positions=[[1,1],[1,-1],[-1,1],[-1,-1]];
+  positions.forEach(([sx,sz])=>{
+    const arm=new THREE.Mesh(new THREE.BoxGeometry(0.18,0.14,1.7),armMat);
+    arm.position.set(sx*0.6,0,sz*0.6);
+    arm.lookAt(new THREE.Vector3(sx*1.6,0,sz*1.6));
+    drone.add(arm);
+    const motor=new THREE.Mesh(new THREE.CylinderGeometry(0.18,0.18,0.3,12),accent);
+    motor.position.set(sx*1.15,0.12,sz*1.15); drone.add(motor);
+    const rotor=new THREE.Mesh(new THREE.BoxGeometry(1.5,0.05,0.18),
+      new THREE.MeshStandardMaterial({color:0x12202c,transparent:true,opacity:.85}));
+    rotor.position.set(sx*1.15,0.32,sz*1.15);
+    drone.add(rotor); rotors.push(rotor);
+    const led=new THREE.Mesh(new THREE.SphereGeometry(0.1,8,8),
+      new THREE.MeshBasicMaterial({color:(sz>0?0x19b86b:0xff4d6d)}));
+    led.position.set(sx*1.15,-0.1,sz*1.15); drone.add(led);
+  });
+
+  carriedGroup=new THREE.Group();    
+  carriedGroup.position.set(0,-0.9,0);
+  drone.add(carriedGroup);
+
+  drone.scale.set(1.15,1.15,1.15);
+  scene.add(drone);
+}
+
+function setCarry(n){
+  while(carriedGroup.children.length) carriedGroup.remove(carriedGroup.children[0]);
+  const show=Math.min(n,3);
+  for(let i=0;i<show;i++){
+    const c=makeCrate(); c.scale.set(.7,.7,.7); c.position.y=-i*1.0; carriedGroup.add(c);
+  }
+}
+
+const CRUISE_Y=24;
+function flyTo(targetWorld, actionY, onArrive){
+  state.flying=true; setControlsEnabled(false);
+  const cur=drone.position.clone();
+  const wps=[];
+  if(cur.y < CRUISE_Y-0.5) wps.push({pos:new THREE.Vector3(cur.x,CRUISE_Y,cur.z), v:11, label:'起飛中…'});
+  wps.push({pos:new THREE.Vector3(targetWorld.x,CRUISE_Y,targetWorld.z), v:16, label:'巡航中…'});
+  wps.push({pos:new THREE.Vector3(targetWorld.x,actionY,targetWorld.z), v:9, label:'下降中…'});
+  flight={wps, i:0, onArrive};
+  setStatus('<span class="live">'+wps[0].label+'</span>');
+}
+
+function updateFlight(dt){
+  if(!flight) return;
+  const seg=flight.wps[flight.i];
+  if(!seg){ flight=null; return; }
+  const pos=drone.position;
+  const to=seg.pos.clone().sub(pos);
+  const dist=to.length();
+  const step=seg.v*dt;
+  droneTiltTarget.x = THREE.MathUtils.clamp(-to.z*0.04,-0.3,0.3);
+  droneTiltTarget.z = THREE.MathUtils.clamp(to.x*0.04,-0.3,0.3);
+  if(dist<=step || dist<0.05){
+    pos.copy(seg.pos);
+    flight.i++;
+    if(flight.i<flight.wps.length){
+      setStatus('<span class="live">'+flight.wps[flight.i].label+'</span>');
+    }else{
+      const cb=flight.onArrive; flight=null;
+      droneTiltTarget.x=0; droneTiltTarget.z=0;
+      if(cb) cb();
+    }
+  }else{
+    to.multiplyScalar(step/dist);
+    pos.add(to);
+  }
+}
+
+function onGo(){
+  if(state.flying || state.done) return;
+  const gx=parseInt(inputX,10), gy=parseInt(inputY,10);
+  if(isNaN(gx)||isNaN(gy)){ flash('請先輸入 X 同 Y 座標','bad'); return; }
+  if(gx<0||gy<0||gx>gridN||gy>gridN){
+    flash('座標要喺 0 至 '+gridN+' 之間','bad'); return;
+  }
+  const cfg=LEVELS[state.lv];
+  const target=worldOf(gx,gy);
+
+  const allTasksDone = state.taskIdx>=cfg.tasks.length;
+  let actionY=CRUISE_Y, kind='move';
+
+  if(allTasksDone && gx===cfg.land.x && gy===cfg.land.y){
+    actionY=1.2; kind='land';
+  }else if(!allTasksDone){
+    const cur=cfg.tasks[state.taskIdx];
+    if(gx===cur.x && gy===cur.y){
+      kind=cur.t;
+      const mk=markers[gx+'_'+gy];
+      actionY = (cur.t==='deliver') ? (mk.roofY+3) : 6.0;
+    }else{
+      kind='miss'; actionY=8;
+    }
+  }else{
+    kind='miss'; actionY=8;  
+  }
+
+  state.attempts++;
+  flyTo(target, actionY, ()=>arrive(gx,gy,kind));
+}
+
+function arrive(gx,gy,kind){
+  const cfg=LEVELS[state.lv];
+  if(kind==='deliver' || kind==='pickup'){
+    completeTask(gx,gy,kind);
+  }else if(kind==='land'){
+    doLand();
+  }else{
+    setControlsEnabled(true);
+    state.flying=false;
+    if(state.taskIdx>=cfg.tasks.length){
+      flash('呢度唔係降落點，再睇睇地圖！','bad');
+      setStatus('飛去藍色 H 降落點，輸入佢嘅座標');
+    }else{
+      flash('('+gx+', '+gy+') 冇任務點，再對一對目標座標！','bad');
+      setStatus('看任務板，輸入目前目標嘅座標');
+    }
+    updateMinimap();
+  }
+}
+
+function completeTask(gx,gy,kind){
+  const cfg=LEVELS[state.lv];
+  const mk=markers[gx+'_'+gy];
+  if(kind==='pickup'){
+    if(mk && mk.crate){ mk.crate.visible=false; }
+    state.carry=(state.carry||0)+1; setCarry(state.carry);
+    flash('📦 提取成功！','good');
+  }else{
+    const w=worldOf(gx,gy);
+    const c=makeCrate(); c.position.set(w.x, mk.roofY+0.8, w.z);
+    levelGroup.add(c);
+    state.carry=Math.max(0,(state.carry||0)); setCarry(state.carry);
+    flash('✅ 物資已送達！','good');
+  }
+  if(mk){
+    if(mk.ring) mk.ring.material.color.set(0x19b86b);
+    if(mk.beacon) mk.beacon.traverse(o=>{ if(o.material&&o.material.color) o.material.color.set(0x19b86b); });
+  }
+  state.taskIdx++;
+  state.flying=false; setControlsEnabled(true);
+  renderTaskList();
+  updateMinimap();
+
+  if(state.taskIdx>=cfg.tasks.length){
+    setStatus('全部派送完成！🎯 飛去藍色 <b>H</b> 降落點');
+    setInputs('0','0'); setActiveField('x');     
+  }else{
+    setStatus('下一個目標：' + taskHint(cfg.tasks[state.taskIdx], cfg.show));
+    setInputs('0','0'); setActiveField('x');
+  }
+}
+
+function doLand(){
+  state.flying=false; state.done=true; setControlsEnabled(false);
+  setStatus('🛬 安全降落！任務完成！');
+  const cfg=LEVELS[state.lv];
+  const minSteps=cfg.tasks.length+1;        
+  const extra=state.attempts-minSteps;
+  let stars=3;
+  if(extra>=4||state.hintUsed) stars=1;
+  else if(extra>=2) stars=2;
+  stars=Math.max(1,stars);
+  state.lastStars=stars;
+  state.totalStars+=stars;
+  document.getElementById('starTotal').textContent=state.totalStars;
+  setTimeout(()=>showWin(stars),700);
+}
+
+function taskTypeText(t){ return t==='pickup'?'提取物資':'放下物資'; }
+function taskHint(task, show){
+  if(show) return taskTypeText(task.t)+' (' + task.x + ', ' + task.y + ')';
+  return taskTypeText(task.t)+'（睇地圖讀座標）';
+}
+
+function renderTaskList(){
+  const cfg=LEVELS[state.lv];
+  const list=document.getElementById('taskList');
+  list.innerHTML='';
+  cfg.tasks.forEach((t,i)=>{
+    const div=document.createElement('div');
+    const isDone=i<state.taskIdx, isCur=i===state.taskIdx;
+    div.className='task t-'+t.t+(isDone?' done':'')+(isCur?' current':'');
+    const ico = t.t==='pickup'?'📦':'🎯';
+    const coordHtml = cfg.show
+        ? '<b>('+t.x+', '+t.y+')</b>'
+        : (isDone? '<b>('+t.x+', '+t.y+')</b>' : '<span class="coordHidden">睇地圖讀座標</span>');
+    div.innerHTML='<div class="dot">'+ico+'</div><div class="txt">'+
+      taskTypeText(t.t)+'<br>'+coordHtml+'</div>';
+    list.appendChild(div);
+  });
+  const allDone=state.taskIdx>=cfg.tasks.length;
+  const ld=document.createElement('div');
+  ld.className='task t-land'+(state.done?' done':'')+(allDone&&!state.done?' current':'');
+  ld.innerHTML='<div class="dot">🛬</div><div class="txt">飛去降落<br><b>('+cfg.land.x+', '+cfg.land.y+')</b></div>';
+  list.appendChild(ld);
+}
+
+function updateMinimap(){
+  const cv=document.getElementById('minimap');
+  const ctx=cv.getContext('2d');
+  const W=cv.width, H=cv.height, pad=20;
+  const N=gridN;
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle='#eaf6ff'; ctx.fillRect(0,0,W,H);
+  const sx=(W-pad*1.5-6)/N, sy=(H-pad*1.5-6)/N;
+  const ox=pad, oy=H-pad;          
+  const px=(gx)=>ox+gx*sx;
+  const py=(gy)=>oy-gy*sy;
+
+  ctx.strokeStyle='#cfe2f2'; ctx.lineWidth=1;
+  ctx.font='bold 9px system-ui'; ctx.textAlign='center'; ctx.textBaseline='middle';
+  for(let i=0;i<=N;i++){
+    ctx.beginPath();ctx.moveTo(px(i),py(0));ctx.lineTo(px(i),py(N));ctx.stroke();
+    ctx.beginPath();ctx.moveTo(px(0),py(i));ctx.lineTo(px(N),py(i));ctx.stroke();
+    if(i%(N>8?2:1)===0){
+      ctx.fillStyle='#1769d8'; ctx.fillText(i, px(i), oy+10);    
+      ctx.fillStyle='#b07400'; ctx.fillText(i, ox-11, py(i));    
+    }
+  }
+  ctx.lineWidth=2.5;
+  ctx.strokeStyle='#2b7fff';
+  ctx.beginPath();ctx.moveTo(px(0),py(0));ctx.lineTo(px(N),py(0));ctx.stroke();
+  ctx.strokeStyle='#e0a800';
+  ctx.beginPath();ctx.moveTo(px(0),py(0));ctx.lineTo(px(0),py(N));ctx.stroke();
+
+  const cfg=LEVELS[state.lv];
+  cfg.tasks.forEach((t,i)=>{
+    const done=i<state.taskIdx, cur=i===state.taskIdx;
+    const col = done?'#19b86b':(t.t==='pickup'?'#7b5cff':'#ff4d6d');
+    drawDot(ctx,px(t.x),py(t.y),cur?7:5,col, cur);
+    if(cur && state.hintUsed && !cfg.show){
+      ctx.strokeStyle='rgba(255,138,43,.8)'; ctx.setLineDash([4,3]); ctx.lineWidth=1.5;
+      ctx.beginPath();ctx.moveTo(px(t.x),py(t.y));ctx.lineTo(px(t.x),py(0));ctx.stroke();
+      ctx.beginPath();ctx.moveTo(px(t.x),py(t.y));ctx.lineTo(px(0),py(t.y));ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  });
+  const allDone=state.taskIdx>=cfg.tasks.length;
+  drawDot(ctx,px(cfg.land.x),py(cfg.land.y),allDone?7:5,'#1ea7ff',allDone&&!state.done);
+  ctx.fillStyle='#0b6fb0'; ctx.font='bold 9px system-ui';
+  ctx.fillText('H',px(cfg.land.x),py(cfg.land.y));
+
+  const dgx=drone? drone.position.x/CELL:0, dgy=drone? -drone.position.z/CELL:0;
+  ctx.fillStyle='#ff8a2b';
+  ctx.beginPath();ctx.arc(px(dgx),py(dgy),4,0,7);ctx.fill();
+  ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.stroke();
+  ctx.font='10px system-ui';ctx.fillStyle='#b5560c';
+  ctx.fillText('🚁',px(dgx),py(dgy)-9);
+}
+function drawDot(ctx,x,y,r,col,pulse){
+  if(pulse){
+    ctx.save(); ctx.globalAlpha=0.25; ctx.fillStyle=col;
+    ctx.beginPath();ctx.arc(x,y,r+4,0,7);ctx.fill(); ctx.restore();
+  }
+  ctx.fillStyle=col; ctx.beginPath();ctx.arc(x,y,r,0,7);ctx.fill();
+  ctx.strokeStyle='#fff';ctx.lineWidth=1.5;ctx.stroke();
+}
+
+function setInputs(x,y){ inputX=x; inputY=y; document.getElementById('valX').textContent=x; document.getElementById('valY').textContent=y; }
+function setActiveField(f){
+  activeField=f;
+  document.getElementById('fieldX').classList.toggle('active',f==='x');
+  document.getElementById('fieldY').classList.toggle('active',f==='y');
+}
+function typeDigit(d){
+  let cur = activeField==='x'?inputX:inputY;
+  if(cur==='0') cur='';
+  cur=(cur+d);
+  if(parseInt(cur,10)>gridN) cur=d;        
+  if(cur.length>2) cur=cur.slice(-2);
+  if(activeField==='x'){ inputX=cur; document.getElementById('valX').textContent=cur; }
+  else{ inputY=cur; document.getElementById('valY').textContent=cur; }
+}
+function backspace(){
+  let cur = activeField==='x'?inputX:inputY;
+  cur=cur.length>1?cur.slice(0,-1):'0';
+  if(activeField==='x'){ inputX=cur; document.getElementById('valX').textContent=cur; }
+  else{ inputY=cur; document.getElementById('valY').textContent=cur; }
+}
+function buildKeypad(){
+  const kp=document.getElementById('keypad'); kp.innerHTML='';
+  const keys=['1','2','3','4','5','6','7','8','9','清','0','⌫','X','Y','提示'];
+  keys.forEach(k=>{
+    const b=document.createElement('button');
+    const fn=['清','⌫','X','Y','提示'].includes(k);
+    b.className='key'+(fn?' fn':'');
+    b.textContent=k;
+    b.addEventListener('click',()=>{
+      if(k==='清'){ if(activeField==='x'){setInputs('0',inputY);} else {setInputs(inputX,'0');} }
+      else if(k==='⌫') backspace();
+      else if(k==='X') setActiveField('x');
+      else if(k==='Y') setActiveField('y');
+      else if(k==='提示') doHint();
+      else typeDigit(k);
+    });
+    kp.appendChild(b);
+  });
+}
+
+function doHint(){
+  const cfg=LEVELS[state.lv];
+  state.hintUsed=true;
+  let target;
+  if(state.taskIdx<cfg.tasks.length) target=cfg.tasks[state.taskIdx];
+  else target={x:cfg.land.x,y:cfg.land.y,t:'land'};
+  flash('💡 目前目標係 ('+target.x+', '+target.y+')','');
+  updateMinimap();
+}
+
+let toastTimer=null;
+function flash(msg,kind){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.className='show'+(kind?(' '+kind):'');
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>{t.className='';},1700);
+}
+function setStatus(html){ document.getElementById('status').innerHTML=html; }
+function setControlsEnabled(on){
+  document.getElementById('btnGo').disabled=!on;
+}
+
+function showWin(stars){
+  const cfg=LEVELS[state.lv];
+  document.getElementById('winTitle').textContent='第 '+(state.lv+1)+' 關完成！'+cfg.name;
+  document.getElementById('winStars').textContent='⭐'.repeat(stars)+'☆'.repeat(3-stars);
+  const msgs=['一次過搞掂，正！','叻仔叻女！','派送大成功！','你越嚟越掂！'];
+  document.getElementById('winMsg').textContent=msgs[Math.floor(Math.random()*msgs.length)];
+  const btn=document.getElementById('btnContinue');
+  btn.textContent = state.lv>=LEVELS.length-1 ? '睇結果 🏆' : '下一關 ▶';
+  document.getElementById('winScreen').classList.add('show');
+}
+
+function animate(){
+  requestAnimationFrame(animate);
+  const dt=Math.min(clock.getDelta(),0.05);
+  const t=clock.elapsedTime;
+
+  updateFlight(dt);
+
+  const spin = state.flying? 1.4 : 0.5;
+  rotors.forEach((r,i)=> r.rotation.y += (i%2?1:-1)*(40*spin)*dt);
+
+  if(drone){
+    drone.rotation.x += (droneTiltTarget.x-drone.rotation.x)*0.12;
+    drone.rotation.z += (droneTiltTarget.z-drone.rotation.z)*0.12;
+    if(state.flying){ drone.userData.baseY = drone.position.y; }
+    else if(!state.done){
+      const base = drone.userData.baseY!==undefined ? drone.userData.baseY : drone.position.y;
+      drone.position.y = base + Math.sin(t*2)*0.15;
+    }
+  }
+  if(levelGroup){
+    Object.values(markers).forEach(m=>{
+      if(m.beacon) m.beacon.position.y = Math.sin(t*2+m.gx)*0.3;
+      if(m.ring && m.type==='deliver'){ m.ring.scale.setScalar(1+Math.sin(t*3)*0.08); }
+      if(m.ring && m.type==='land'){ m.ring.scale.setScalar(1+Math.sin(t*2.4)*0.12); }
+    });
+  }
+
+  updateCamera();
+  renderer.render(scene,camera);
+
+  if(state.flying && Math.floor(t*12)%2===0) updateMinimap();
+}
+
+function disposeGroup(g){
+  g.traverse(o=>{
+    if(o.geometry) o.geometry.dispose();
+    if(o.material){ if(Array.isArray(o.material)) o.material.forEach(m=>m.dispose()); else o.material.dispose(); }
+  });
+}
+
+function goToLevel(i){
+  i=Math.max(0,Math.min(LEVELS.length-1,i));
+  state.carry=0;
+  buildLevel(i);
+  document.getElementById('winScreen').classList.remove('show');
+  document.getElementById('finalScreen').classList.remove('show');
+}
+
+function bindUI(){
+  document.getElementById('fieldX').addEventListener('click',()=>setActiveField('x'));
+  document.getElementById('fieldY').addEventListener('click',()=>setActiveField('y'));
+  document.getElementById('btnGo').addEventListener('click',onGo);
+  document.getElementById('btnPrev').addEventListener('click',()=>goToLevel(state.lv-1));
+  document.getElementById('btnNext').addEventListener('click',()=>goToLevel(state.lv+1));
+  document.getElementById('btnHelp').addEventListener('click',()=>document.getElementById('startScreen').classList.add('show'));
+  document.getElementById('btnStart').addEventListener('click',()=>{
+    document.getElementById('startScreen').classList.remove('show');
+  });
+  
+  // 【更新】在此處加入雲端儲存觸發邏輯
+  document.getElementById('btnContinue').addEventListener('click', async ()=>{
+    if(state.lv>=LEVELS.length-1){
+      document.getElementById('winScreen').classList.remove('show');
+      document.getElementById('finalStars').textContent=state.totalStars;
+      document.getElementById('finalScreen').classList.add('show');
+      
+      const btn = document.getElementById('btnRestartAll');
+      btn.textContent = '⏳ 雲端儲存中...';
+      btn.disabled = true;
+      await sendDataToSheet(state.totalStars);
+      btn.textContent = '由頭再玩';
+      btn.disabled = false;
+    }else{
+      goToLevel(state.lv+1);
+    }
+  });
+
+  document.getElementById('btnRestartAll').addEventListener('click',()=>{
+    state.totalStars=0; document.getElementById('starTotal').textContent=0;
+    goToLevel(0);
+  });
+  window.addEventListener('keydown',e=>{
+    if(document.querySelector('.screen.show')) return;
+    if(e.key>='0'&&e.key<='9') typeDigit(e.key);
+    else if(e.key==='Backspace') backspace();
+    else if(e.key==='Tab'){ e.preventDefault(); setActiveField(activeField==='x'?'y':'x'); }
+    else if(e.key==='ArrowLeft') setActiveField('x');
+    else if(e.key==='ArrowRight') setActiveField('y');
+    else if(e.key==='Enter') onGo();
+    else if(e.key.toLowerCase()==='h') doHint();
+  });
+}
+
+window.addEventListener('load',()=>{
+  initThree();
+  buildKeypad();
+  bindUI();
+  goToLevel(0);
+});
+</script>
+</body>
+</html>

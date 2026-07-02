@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>垃圾分類大作戰 (香港四色桶版)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        * { -webkit-tap-highlight-color: transparent; touch-action: none; box-sizing: border-box; }
+        body { margin: 0; overflow: hidden; background-color: #f3f4f6; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        #canvas-container { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; }
+        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; pointer-events: none; }
+        .panel { background: #ffffff; border-radius: 20px; box-shadow: 0 8px 32px rgba(0,0,0,0.18); pointer-events: auto; }
+        
+        .shake { animation: shake 0.4s cubic-bezier(.36,.07,.19,.97) both; }
+        @keyframes shake {
+            10%, 90% { transform: translate3d(-2px, 2px, 0); }
+            20%, 80% { transform: translate3d(4px, -4px, 0); }
+            30%, 50%, 70% { transform: translate3d(-6px, 4px, 0); }
+            40%, 60% { transform: translate3d(6px, -4px, 0); }
+        }
+        
+        /* Leaderboard table */
+        .lb-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        .lb-table th { background: #e5e7eb; padding: 6px 8px; text-align: left; font-weight: 700; }
+        .lb-table td { padding: 6px 8px; border-bottom: 1px solid #f3f4f6; }
+        .lb-table tr:nth-child(even) td { background: #f9fafb; }
+        .lb-table tr.me td { background: #dbeafe; font-weight: 700; }
+
+        /* Modal overlay */
+        .modal-overlay {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 100;
+            display: flex; align-items: center; justify-content: center; padding: 16px; pointer-events: auto;
+        }
+        .modal-box { background: #fff; border-radius: 20px; padding: 24px; max-width: 360px; width: 100%; box-shadow: 0 12px 48px rgba(0,0,0,0.25); }
+        .btn-primary { width: 100%; background: #10b981; color: #fff; font-weight: 700; border: none; border-radius: 12px; padding: 14px; font-size: 1.05rem; cursor: pointer; margin-top: 14px; transition: background 0.1s; }
+        .btn-primary:active { background: #059669; }
+        .btn-secondary { width: 100%; background: #f3f4f6; color: #374151; font-weight: 600; border: none; border-radius: 12px; padding: 12px; font-size: 0.95rem; cursor: pointer; margin-top: 8px; transition: background 0.1s; }
+        .btn-secondary:active { background: #e5e7eb; }
+    </style>
+</head>
+<body>
+
+    <div id="canvas-container">
+        <canvas id="gameCanvas"></canvas>
+    </div>
+
+    <div id="hud" class="absolute top-0 left-0 w-full p-3 flex justify-between items-start z-20 pointer-events-none hidden">
+        <button id="back-home-btn" onclick="confirmReturnHome()" style="pointer-events:auto;background:#1f2937;color:#fff;border:none;border-radius:10px;padding:8px 12px;font-size:0.82rem;font-weight:700;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.3);display:flex;align-items:center;gap:5px;">
+            ← 返回
+        </button>
+        <div id="hud-stats" style="background:#1f2937;color:#fff;padding:8px 14px;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,0.3);">
+            <div style="font-size:0.7rem;color:#9ca3af;">目標 <span id="hud-level" style="color:#fff;font-weight:700;font-size:0.95rem;">-</span></div>
+            <div style="font-size:1.1rem;font-weight:900;color:#fbbf24;">分數: <span id="hud-score">0</span></div>
+            <div style="font-size:0.7rem;font-weight:700;color:#34d399;">連續正確: <span id="hud-streak">0</span> 🔥</div>
+        </div>
+        <div id="hud-lives-wrap" style="background:#1f2937;color:#fff;padding:8px 14px;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,0.3);text-align:center;">
+            <div id="hud-lives-label" style="font-size:0.7rem;color:#9ca3af;">生命值</div>
+            <div id="hud-lives" style="font-size:1.4rem;font-weight:900;color:#ef4444;">❤️❤️❤️</div>
+        </div>
+        <div id="hud-campaign" style="display:none;background:#047857;color:#fff;padding:8px 14px;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,0.3);text-align:center;">
+            <div style="font-size:0.7rem;color:#a7f3d0;">關卡模式</div>
+            <div style="font-size:1rem;font-weight:900;color:#fef08a;">第 <span id="hud-campaign-level">1</span>/3 關</div>
+            <div style="font-size:0.72rem;color:#a7f3d0;">進度 <span id="hud-campaign-progress">0</span>%</div>
+        </div>
+    </div>
+
+    <div id="return-confirm-modal" class="modal-overlay" style="display:none;">
+        <div class="modal-box" style="max-width:300px;text-align:center;">
+            <div style="font-size:2rem;margin-bottom:8px;">🏠</div>
+            <h3 style="font-size:1.1rem;font-weight:900;color:#1f2937;margin-bottom:6px;">返回主頁？</h3>
+            <p style="color:#6b7280;font-size:0.85rem;margin-bottom:18px;">目前進度將不會儲存。</p>
+            <button id="confirm-return-yes" class="btn-primary" style="margin-top:0;">確認返回</button>
+            <button id="confirm-return-no" class="btn-secondary">繼續遊戲</button>
+        </div>
+    </div>
+
+    <div id="ui-layer" class="flex items-center justify-center">
+
+        <div id="start-panel" class="panel" style="padding:28px;max-width:340px;width:calc(100% - 32px);margin:16px;text-align:center;">
+            <div style="font-size: 3rem; margin-bottom: -10px;">♻️</div>
+            <h1 style="font-size:1.7rem;font-weight:900;color:#1f2937;margin-bottom:4px;">香港四色回收挑戰</h1>
+            <p style="color:#6b7280;font-size:0.85rem;margin-bottom:20px;">滑動垃圾到正確的分類桶中！</p>
+            <div style="display:flex;flex-direction:column;gap:10px;">
+                <button id="campaign-btn" style="background:#10b981;color:#fff;font-weight:700;font-size:1.05rem;padding:14px;border:none;border-radius:14px;cursor:pointer;">📋 關卡模式 (3關)</button>
+                <button id="init-btn" style="background:#3b82f6;color:#fff;font-weight:700;font-size:1.05rem;padding:14px;border:none;border-radius:14px;cursor:pointer;">🚀 無盡模式</button>
+                <button id="tutorial-btn" style="background:#f59e0b;color:#fff;font-weight:700;font-size:0.95rem;padding:12px;border:none;border-radius:14px;cursor:pointer;">🎓 教學模式</button>
+            </div>
+        </div>
+
+        <div id="tutorial-panel" class="panel hidden absolute top-28 pointer-events-auto" style="padding:16px;max-width:300px;width:calc(100% - 32px);">
+            <div style="background:#f59e0b;color:#fff;text-align:center;font-weight:700;padding:6px;font-size:0.85rem;border-radius:12px 12px 0 0;margin:-16px -16px 12px -16px;">教學模式</div>
+            <h3 id="tutorial-title" style="font-size:1.05rem;font-weight:900;color:#1f2937;border-bottom:1px solid #e5e7eb;padding-bottom:8px;margin-bottom:8px;"></h3>
+            <p id="tutorial-instruction" style="font-size:0.85rem;color:#374151;margin-bottom:10px;line-height:1.55;"></p>
+            <button id="tutorial-next" class="btn-primary" style="padding:10px; font-size:0.9rem;">我了解了</button>
+        </div>
+
+        <div id="status-msg" class="hidden absolute top-32 left-1/2 -translate-x-1/2 pointer-events-none" style="background:#1f2937;color:#fff;padding:8px 20px;border-radius:999px;font-weight:700;font-size:1.1rem;box-shadow:0 4px 16px rgba(0,0,0,0.25); z-index: 50; transition: opacity 0.3s;">
+        </div>
+
+        <div id="result-panel" class="panel hidden" style="padding:24px;max-width:300px;width:calc(100% - 32px);margin:16px;text-align:center;">
+            <h2 id="result-title" style="font-size:1.6rem;font-weight:900;margin-bottom:4px;"></h2>
+            <p id="result-score-change" style="font-size:1rem;font-weight:700;margin-bottom:10px;"></p>
+            <button id="next-btn" style="background:#1f2937;color:#fff;font-weight:700;border:none;border-radius:12px;padding:14px;width:100%;font-size:0.95rem;cursor:pointer;">繼續</button>
+        </div>
+
+        <div id="gameover-panel" class="panel hidden" style="padding:32px;max-width:300px;width:calc(100% - 32px);margin:16px;text-align:center;border:2px solid #ef4444;">
+            <h2 style="font-size:2rem;font-weight:900;color:#ef4444;margin-bottom:10px;">遊戲結束！</h2>
+            <p style="color:#6b7280;font-size:0.85rem;margin-bottom:4px;">最終得分</p>
+            <p id="final-score" style="font-size:2.5rem;font-weight:900;color:#f59e0b;margin-bottom:12px;">0</p>
+            <button id="restart-game-btn" style="background:linear-gradient(90deg,#dc2626,#ea580c);color:#fff;font-weight:700;border:none;border-radius:12px;padding:14px;width:100%;font-size:0.95rem;cursor:pointer;">返回主畫面</button>
+        </div>
+
+        <div id="campaign-complete-panel" class="panel hidden" style="padding:28px;max-width:300px;width:calc(100% - 32px);margin:16px;text-align:center;border:2px solid #10b981;">
+            <div style="font-size:2.5rem;margin-bottom:6px;">🏆</div>
+            <h2 style="font-size:1.4rem;font-weight:900;color:#047857;margin-bottom:4px;">全部通關！</h2>
+            <p style="color:#6b7280;font-size:0.82rem;margin-bottom:4px;">總得分</p>
+            <p id="campaign-final-score" style="font-size:2rem;font-weight:900;color:#10b981;margin-bottom:18px;">0</p>
+            <button id="campaign-restart-btn" style="background:#f3f4f6;color:#374151;font-weight:600;border:none;border-radius:12px;padding:12px;width:100%;font-size:0.9rem;cursor:pointer;">返回主畫面</button>
+        </div>
+    </div>
+
+    <script>
+        // 【新增】接收主網頁傳來的學生資料
+        const urlParams = new URLSearchParams(window.location.search);
+        const studentClass = urlParams.get('class') || '未設定班別';
+        const studentId = urlParams.get('id') || '未設定學號';
+        let gameStartTime = 0; // 用於計算遊玩時間
+
+        // 【新增】傳送資料到 Google Sheet 函數
+        function sendDataToSheet(finalScore) {
+            const scriptURL = 'https://script.google.com/macros/s/AKfycbwHKY-YDXziCb0eCZtW-GQ9MGUQshKIIJk1qJgX7TPqTL1YwThCrvCld5YNSH9CSwpPew/exec';
+            const timeSpent = Math.round((Date.now() - gameStartTime) / 1000);
+            const gameName = mode === 'campaign' ? '回收挑戰(關卡)' : '回收挑戰(無盡)';
+
+            const data = {
+                gameName: gameName,
+                studentClass: studentClass,
+                studentId: studentId,
+                playDate: new Date().toLocaleDateString('zh-HK'),
+                playTime: timeSpent + "秒",
+                score: finalScore
+            };
+
+            fetch(scriptURL, {
+                method: 'POST',
+                body: JSON.stringify(data),
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' }
+            })
+            .then(res => res.json())
+            .then(res => console.log('成績上傳成功', res))
+            .catch(err => console.error('成績上傳失敗', err));
+        }
+
+        // ----------------------------------------------------
+        // 定義垃圾種類與垃圾桶 (依據香港四色標準)
+        // ----------------------------------------------------
+        const CATEGORIES = {
+            GLASS:   { id: 'glass', name: '玻璃', color: '#22c55e', icon: '🍾' }, // 綠色
+            PLASTIC: { id: 'plastic', name: '塑膠', color: '#b45309', icon: '🛍️' }, // 棕色
+            METAL:   { id: 'metal', name: '金屬', color: '#eab308', icon: '🥫' }, // 黃色
+            PAPER:   { id: 'paper', name: '廢紙', color: '#3b82f6', icon: '📰' }  // 藍色
+        };
+
+        const ITEM_TYPES = [
+            { emoji: '🍾', cat: 'glass', name: '玻璃瓶' },
+            { emoji: '🥃', cat: 'glass', name: '玻璃杯' },
+            { emoji: '🫙', cat: 'glass', name: '玻璃罐' },
+            { emoji: '🥤', cat: 'plastic', name: '塑膠杯' },
+            { emoji: '🛍️', cat: 'plastic', name: '塑膠袋' },
+            { emoji: '🧴', cat: 'plastic', name: '洗髮精瓶' },
+            { emoji: '🥫', cat: 'metal', name: '易開罐' },
+            { emoji: '🗝️', cat: 'metal', name: '金屬鑰匙' },
+            { emoji: '🔩', cat: 'metal', name: '鐵釘' },
+            { emoji: '📰', cat: 'paper', name: '報紙' },
+            { emoji: '📦', cat: 'paper', name: '紙箱' },
+            { emoji: '✉️', cat: 'paper', name: '信封' }
+        ];
+
+        // 關卡設定
+        const CAMPAIGN_LEVELS = [
+            { target: 10, speed: 1.5, types: ['paper', 'plastic'], spawnRate: 1500 },
+            { target: 15, speed: 2.0, types: ['paper', 'plastic', 'metal'], spawnRate: 1200 },
+            { target: 20, speed: 2.5, types: ['glass', 'plastic', 'metal', 'paper'], spawnRate: 1000 }
+        ];
+
+        // ----------------------------------------------------
+        // 系統變數
+        // ----------------------------------------------------
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        let width, height;
+        
+        let gameState = 'menu'; // menu, playing, tutorial, gameover, result
+        let mode = ''; // campaign, endless, tutorial
+        let animationId;
+        let lastTime = 0;
+        let spawnTimer = 0;
+        
+        let items = [];
+        let particles = [];
+        let floatingTexts = [];
+        let score = 0, lives = 3, streak = 0, maxStreak = 0;
+        let currentLevel = 0;
+        let itemsSorted = 0;
+        let currentSpeed = 2;
+        let currentSpawnRate = 1000;
+        let bins = [];
+        
+        let draggedItem = null;
+        let dragOffsetX = 0;
+        let dragOffsetY = 0;
+
+        let tutorialStep = 0;
+        let isTutorialPaused = false;
+
+        let audioCtx;
+
+        const DOM = {
+            start: document.getElementById('start-panel'),
+            hud: document.getElementById('hud'),
+            tutorial: document.getElementById('tutorial-panel'),
+            result: document.getElementById('result-panel'),
+            gameover: document.getElementById('gameover-panel'),
+            campaignComplete: document.getElementById('campaign-complete-panel'),
+            statusMsg: document.getElementById('status-msg')
+        };
+
+        function adjustColor(color, amount) {
+            return '#' + color.replace(/^#/, '').replace(/../g, color => 
+                ('0' + Math.min(255, Math.max(0, parseInt(color, 16) + amount)).toString(16)).substr(-2)
+            );
+        }
+
+        window.onload = () => {
+            resizeCanvas();
+            window.addEventListener('resize', resizeCanvas);
+            
+            canvas.addEventListener('pointerdown', handlePointerDown);
+            canvas.addEventListener('pointermove', handlePointerMove);
+            window.addEventListener('pointerup', handlePointerUp);
+
+            document.getElementById('campaign-btn').addEventListener('click', () => initGame('campaign'));
+            document.getElementById('init-btn').addEventListener('click', () => initGame('endless'));
+            document.getElementById('tutorial-btn').addEventListener('click', () => initGame('tutorial'));
+            document.getElementById('next-btn').addEventListener('click', nextLevel);
+            document.getElementById('restart-game-btn').addEventListener('click', returnToStartMenu);
+            document.getElementById('campaign-restart-btn').addEventListener('click', returnToStartMenu);
+            document.getElementById('tutorial-next').addEventListener('click', resumeTutorial);
+
+            document.getElementById('confirm-return-yes').addEventListener('click', () => {
+                document.getElementById('return-confirm-modal').style.display = 'none';
+                returnToStartMenu();
+            });
+            document.getElementById('confirm-return-no').addEventListener('click', () => { document.getElementById('return-confirm-modal').style.display = 'none'; });
+
+            requestAnimationFrame(gameLoop);
+        };
+
+        function resizeCanvas() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+            setupBins();
+        }
+
+        function setupBins() {
+            bins = [];
+            const binCount = 4;
+            const padding = 10;
+            const availableWidth = Math.min(width, 600) - (padding * 2);
+            const binWidth = availableWidth / binCount;
+            const binHeight = Math.min(140, height * 0.18);
+            const startX = (width - availableWidth) / 2 + padding;
+            const y = height - binHeight - 20;
+
+            const categories = [CATEGORIES.GLASS, CATEGORIES.PLASTIC, CATEGORIES.METAL, CATEGORIES.PAPER];
+            
+            categories.forEach((cat, index) => {
+                bins.push({
+                    cat: cat.id, name: cat.name, color: cat.color, icon: cat.icon,
+                    x: startX + (index * binWidth) + 5, y: y, w: binWidth - 10, h: binHeight
+                });
+            });
+        }
+
+        function getScale() { return Math.min(width / 400, 1.5); }
+        function getItemRadius() { return 30 * getScale(); }
+
+        function handlePointerDown(e) {
+            if (gameState !== 'playing' || isTutorialPaused) return;
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+
+            for (let i = items.length - 1; i >= 0; i--) {
+                const item = items[i];
+                const r = getItemRadius();
+                if (x >= item.x - r && x <= item.x + r && y >= item.y - r && y <= item.y + r) {
+                    draggedItem = item;
+                    dragOffsetX = x - item.x; dragOffsetY = y - item.y;
+                    item.isDragging = true;
+                    items.splice(i, 1); items.push(item);
+                    playSound('pop');
+                    break;
+                }
+            }
+        }
+
+        function handlePointerMove(e) {
+            if (draggedItem) {
+                const rect = canvas.getBoundingClientRect();
+                draggedItem.x = e.clientX - rect.left - dragOffsetX;
+                draggedItem.y = e.clientY - rect.top - dragOffsetY;
+            }
+        }
+
+        function handlePointerUp(e) {
+            if (draggedItem) {
+                checkBinCollision(draggedItem);
+                draggedItem.isDragging = false;
+                draggedItem = null;
+            }
+        }
+
+        function checkBinCollision(item) {
+            let sorted = false;
+            for (let bin of bins) {
+                if (item.x > bin.x && item.x < bin.x + bin.w && item.y > bin.y && item.y < bin.y + bin.h) {
+                    if (item.cat === bin.cat) handleCorrectSort(item, bin);
+                    else handleWrongSort(item, bin);
+                    sorted = true;
+                    items = items.filter(i => i !== item);
+                    break;
+                }
+            }
+        }
+
+        function handleCorrectSort(item, bin) {
+            playSound('success');
+            streak++; maxStreak = Math.max(maxStreak, streak);
+            let pts = 10 + Math.floor(streak / 5) * 5;
+            score += pts; itemsSorted++;
+            
+            spawnParticles(item.x, item.y, bin.color);
+            addFloatingText(`+${pts}`, item.x, item.y, '#10b981');
+            if (streak > 2 && streak % 5 === 0) showStatusMsg(`${streak} 連擊！ 🔥`, '#f59e0b');
+
+            updateHUD();
+
+            if (mode === 'campaign') {
+                let lvl = CAMPAIGN_LEVELS[currentLevel];
+                if (itemsSorted >= lvl.target) levelComplete();
+            } else if (mode === 'tutorial') {
+                if (itemsSorted === 1) tutorialStep = 1;
+                else if (itemsSorted === 2) tutorialStep = 2;
+                else if (itemsSorted === 3) tutorialStep = 3;
+                else if (itemsSorted === 4) endTutorial();
+                processTutorialStep();
+            }
+        }
+
+        function handleWrongSort(item, bin) {
+            playSound('error'); streak = 0; updateHUD();
+            addFloatingText('❌ 丟錯了', item.x, item.y, '#ef4444');
+            document.getElementById('canvas-container').classList.add('shake');
+            setTimeout(() => document.getElementById('canvas-container').classList.remove('shake'), 400);
+
+            if (mode === 'tutorial') showStatusMsg(`這是【${CATEGORIES[item.cat.toUpperCase()].name}】喔！`, '#ef4444');
+            else if (mode === 'endless') loseLife();
+        }
+
+        function loseLife() {
+            if (mode === 'campaign') return; 
+            lives--; streak = 0;
+            playSound('explosion');
+            document.getElementById('canvas-container').classList.add('shake');
+            setTimeout(() => document.getElementById('canvas-container').classList.remove('shake'), 400);
+            updateHUD();
+            if (lives <= 0) gameOver();
+        }
+
+        function gameLoop(timestamp) {
+            const deltaTime = timestamp - lastTime;
+            lastTime = timestamp;
+
+            ctx.clearRect(0, 0, width, height);
+            if (gameState === 'playing' && !isTutorialPaused) updateGame(deltaTime);
+            
+            drawConveyor(); drawBins(); drawItems(); drawParticles(); drawFloatingTexts();
+            animationId = requestAnimationFrame(gameLoop);
+        }
+
+        function updateGame(deltaTime) {
+            if (mode !== 'tutorial') {
+                spawnTimer -= deltaTime;
+                if (spawnTimer <= 0) { spawnItem(); spawnTimer = currentSpawnRate; }
+            }
+
+            for (let i = items.length - 1; i >= 0; i--) {
+                const item = items[i];
+                if (!item.isDragging) {
+                    item.y += currentSpeed * (deltaTime / 16); 
+                    item.rotation += 0.02;
+                    if (item.y > height + 50) { items.splice(i, 1); handleMissedItem(); }
+                }
+            }
+            if (mode === 'endless') {
+                currentSpeed += 0.0005 * (deltaTime / 16);
+                currentSpawnRate = Math.max(400, currentSpawnRate - 0.2 * (deltaTime / 16));
+            }
+        }
+
+        function spawnItem(specificType = null) {
+            let availableTypes = ITEM_TYPES;
+            if (mode === 'campaign') {
+                const allowedCats = CAMPAIGN_LEVELS[currentLevel].types;
+                availableTypes = ITEM_TYPES.filter(t => allowedCats.includes(t.cat));
+            }
+            const type = specificType || availableTypes[Math.floor(Math.random() * availableTypes.length)];
+            const r = getItemRadius();
+            const beltWidth = Math.min(300, width * 0.6);
+            const startX = width/2 + (Math.random() - 0.5) * (beltWidth - r*2);
+            items.push({ ...type, x: startX, y: -50, rotation: Math.random() * Math.PI * 2, isDragging: false });
+        }
+
+        function handleMissedItem() {
+            streak = 0; updateHUD();
+            if (mode === 'endless') loseLife();
+            else if (mode === 'campaign') showStatusMsg('⚠️ 漏掉了！', '#f59e0b');
+        }
+
+        function drawConveyor() {
+            const beltWidth = Math.min(300, width * 0.6);
+            ctx.fillStyle = '#e5e7eb';
+            ctx.fillRect((width - beltWidth)/2, 0, beltWidth, height);
+            ctx.strokeStyle = '#d1d5db'; ctx.lineWidth = 4; ctx.setLineDash([20, 20]);
+            const offset = (Date.now() / 20) % 40; ctx.lineDashOffset = -offset;
+            ctx.beginPath();
+            ctx.moveTo((width - beltWidth)/2 + 20, 0); ctx.lineTo((width - beltWidth)/2 + 20, height);
+            ctx.moveTo((width + beltWidth)/2 - 20, 0); ctx.lineTo((width + beltWidth)/2 - 20, height);
+            ctx.stroke(); ctx.setLineDash([]);
+        }
+
+        function drawBins() {
+            bins.forEach(bin => {
+                const lidHeight = bin.h * 0.22;
+                const bodyY = bin.y + lidHeight; const bodyHeight = bin.h - lidHeight;
+                const bodyWidth = bin.w * 0.88; const bodyX = bin.x + (bin.w - bodyWidth) / 2;
+
+                ctx.fillStyle = 'rgba(0,0,0,0.2)';
+                ctx.beginPath(); ctx.ellipse(bin.x + bin.w/2, bin.y + bin.h, bin.w/2.2, bin.w/10, 0, 0, Math.PI * 2); ctx.fill();
+
+                let bodyGradient = ctx.createLinearGradient(bodyX, bodyY, bodyX + bodyWidth, bodyY);
+                bodyGradient.addColorStop(0, adjustColor(bin.color, -40));
+                bodyGradient.addColorStop(0.3, adjustColor(bin.color, 15));
+                bodyGradient.addColorStop(0.7, bin.color);
+                bodyGradient.addColorStop(1, adjustColor(bin.color, -50));
+
+                ctx.fillStyle = bodyGradient;
+                ctx.beginPath();
+                if (ctx.roundRect) ctx.roundRect(bodyX, bodyY, bodyWidth, bodyHeight, [0, 0, 12, 12]);
+                else ctx.rect(bodyX, bodyY, bodyWidth, bodyHeight);
+                ctx.fill(); ctx.lineWidth = 1.5; ctx.strokeStyle = adjustColor(bin.color, -60); ctx.stroke();
+
+                ctx.strokeStyle = 'rgba(0,0,0,0.15)'; ctx.lineWidth = 2; ctx.beginPath();
+                ctx.moveTo(bodyX + 4, bodyY + bodyHeight * 0.2); ctx.lineTo(bodyX + bodyWidth - 4, bodyY + bodyHeight * 0.2);
+                ctx.moveTo(bodyX + 4, bodyY + bodyHeight * 0.85); ctx.lineTo(bodyX + bodyWidth - 4, bodyY + bodyHeight * 0.85); ctx.stroke();
+
+                let lidGradient = ctx.createLinearGradient(bin.x, bin.y, bin.x + bin.w, bin.y);
+                lidGradient.addColorStop(0, adjustColor(bin.color, -30));
+                lidGradient.addColorStop(0.5, adjustColor(bin.color, 20));
+                lidGradient.addColorStop(1, adjustColor(bin.color, -40));
+
+                ctx.fillStyle = lidGradient; ctx.beginPath();
+                if (ctx.roundRect) ctx.roundRect(bin.x, bin.y, bin.w, lidHeight, [8, 8, 4, 4]);
+                else ctx.rect(bin.x, bin.y, bin.w, lidHeight);
+                ctx.fill(); ctx.stroke();
+
+                ctx.fillStyle = '#111827'; ctx.beginPath();
+                const holeW = bin.w * 0.55; const holeH = lidHeight * 0.5;
+                if (ctx.roundRect) ctx.roundRect(bin.x + (bin.w - holeW)/2, bin.y + (lidHeight - holeH)/2, holeW, holeH, 6);
+                else ctx.rect(bin.x + (bin.w - holeW)/2, bin.y + (lidHeight - holeH)/2, holeW, holeH);
+                ctx.fill();
+                ctx.strokeStyle = 'rgba(0,0,0,0.5)'; ctx.lineWidth = 2; ctx.stroke();
+                ctx.strokeStyle = 'rgba(255,255,255,0.4)'; ctx.lineWidth = 2; ctx.beginPath();
+                ctx.moveTo(bin.x + 8, bin.y + 2); ctx.lineTo(bin.x + bin.w - 8, bin.y + 2); ctx.stroke();
+
+                ctx.font = `${Math.min(50, bin.w/1.2)}px Arial`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.15)'; ctx.fillText('♻️', bin.x + bin.w/2, bodyY + bodyHeight/2);
+
+                ctx.fillStyle = '#ffffff'; ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 4; ctx.shadowOffsetX = 1; ctx.shadowOffsetY = 1;
+                ctx.font = `bold ${Math.min(24, bin.w/3)}px Arial`; ctx.fillText(bin.icon, bin.x + bin.w/2, bodyY + bodyHeight/2 - 14);
+                ctx.font = `bold ${Math.min(15, bin.w/4.5)}px Arial`; ctx.fillText(bin.name, bin.x + bin.w/2, bodyY + bodyHeight/2 + 18);
+                
+                ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
+            });
+        }
+
+        function drawItems() {
+            const r = getItemRadius();
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            
+            items.forEach(item => {
+                if (item.isDragging) {
+                    ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.beginPath();
+                    ctx.arc(item.x + 10, item.y + 15, r, 0, Math.PI * 2); ctx.fill();
+                }
+            });
+
+            items.forEach(item => {
+                ctx.save(); ctx.translate(item.x, item.y);
+                if (item.isDragging) { ctx.scale(1.2, 1.2); ctx.rotate(0); } else ctx.rotate(item.rotation);
+                
+                ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill();
+                ctx.lineWidth = 3; ctx.strokeStyle = CATEGORIES[item.cat.toUpperCase()].color; ctx.stroke();
+                ctx.font = `${r * 1.2}px Arial`; ctx.fillText(item.emoji, 0, 2); ctx.restore();
+            });
+        }
+
+        function drawParticles() {
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                ctx.fillStyle = p.color; ctx.globalAlpha = p.life / p.maxLife; ctx.beginPath();
+                ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
+                p.x += p.vx; p.y += p.vy; p.life--;
+                if (p.life <= 0) particles.splice(i, 1);
+            }
+        }
+
+        function drawFloatingTexts() {
+            for (let i = floatingTexts.length - 1; i >= 0; i--) {
+                const ft = floatingTexts[i];
+                ctx.fillStyle = ft.color; ctx.globalAlpha = ft.life / ft.maxLife; ctx.font = 'bold 24px Arial';
+                ctx.textAlign = 'center'; ctx.fillText(ft.text, ft.x, ft.y); ctx.globalAlpha = 1;
+                ft.y -= 1; ft.life--; if (ft.life <= 0) floatingTexts.splice(i, 1);
+            }
+        }
+
+        function spawnParticles(x, y, color) {
+            for (let i = 0; i < 15; i++) particles.push({ x: x, y: y, vx: (Math.random() - 0.5) * 8, vy: (Math.random() - 0.5) * 8, r: Math.random() * 4 + 2, color: color, life: 30 + Math.random() * 20, maxLife: 50 });
+        }
+
+        function addFloatingText(text, x, y, color) { floatingTexts.push({ text, x, y, color, life: 60, maxLife: 60 }); }
+
+        function showStatusMsg(text, color) {
+            const el = DOM.statusMsg; el.innerText = text; el.style.borderLeft = `6px solid ${color}`;
+            el.classList.remove('hidden'); el.style.opacity = '1';
+            setTimeout(() => { el.style.opacity = '0'; setTimeout(() => el.classList.add('hidden'), 300); }, 1500);
+        }
+
+        function initGame(selectedMode) {
+            initAudio(); mode = selectedMode;
+            score = 0; streak = 0; maxStreak = 0;
+            items = []; particles = []; floatingTexts = [];
+            gameStartTime = Date.now(); // 【新增】記錄開始時間
+            
+            DOM.start.classList.add('hidden'); DOM.hud.classList.remove('hidden'); DOM.gameover.classList.add('hidden');
+            DOM.result.classList.add('hidden'); DOM.campaignComplete.classList.add('hidden'); DOM.tutorial.classList.add('hidden');
+            
+            const stats = document.getElementById('hud-stats'); const livesWrap = document.getElementById('hud-lives-wrap'); const campaignHUD = document.getElementById('hud-campaign');
+            
+            if (mode === 'tutorial') {
+                stats.style.display = 'none'; livesWrap.style.display = 'none'; campaignHUD.style.display = 'none';
+                tutorialStep = 0; startTutorial();
+            } else if (mode === 'campaign') {
+                stats.style.display = 'block'; livesWrap.style.display = 'none'; campaignHUD.style.display = 'block';
+                currentLevel = 0; startLevel();
+            } else {
+                stats.style.display = 'block'; livesWrap.style.display = 'block'; campaignHUD.style.display = 'none';
+                lives = 3; currentSpeed = 2; currentSpawnRate = 1500; spawnTimer = currentSpawnRate; gameState = 'playing'; updateHUD();
+            }
+            lastTime = performance.now();
+        }
+
+        function startLevel() {
+            items = []; itemsSorted = 0; streak = 0; isTutorialPaused = false;
+            const lvl = CAMPAIGN_LEVELS[currentLevel];
+            currentSpeed = lvl.speed; currentSpawnRate = lvl.spawnRate; spawnTimer = currentSpawnRate; gameState = 'playing';
+            document.getElementById('hud-campaign-level').innerText = currentLevel + 1;
+            document.getElementById('hud-level').innerText = `目標: ${lvl.target}個`; updateHUD();
+            showStatusMsg(`第 ${currentLevel + 1} 關開始！`, '#10b981');
+        }
+
+        function levelComplete() {
+            gameState = 'result'; playSound('success'); DOM.result.classList.remove('hidden');
+            document.getElementById('result-title').innerText = "🎉 關卡完成！";
+            document.getElementById('result-title').className = "text-3xl font-black mb-1 text-green-600";
+            document.getElementById('result-score-change').innerText = `已分類 ${CAMPAIGN_LEVELS[currentLevel].target} 個物品`;
+            if (currentLevel >= CAMPAIGN_LEVELS.length - 1) document.getElementById('next-btn').innerText = "查看總成績";
+            else document.getElementById('next-btn').innerText = `進入第 ${currentLevel + 2} 關 →`;
+        }
+
+        function nextLevel() {
+            DOM.result.classList.add('hidden');
+            if (mode === 'campaign') {
+                currentLevel++;
+                if (currentLevel >= CAMPAIGN_LEVELS.length) showCampaignComplete();
+                else startLevel();
+            } else if (mode === 'tutorial') returnToStartMenu();
+        }
+
+        function showCampaignComplete() {
+            gameState = 'result';
+            DOM.campaignComplete.classList.remove('hidden');
+            document.getElementById('campaign-final-score').innerText = score;
+            sendDataToSheet(score); // 【新增】觸發記錄上傳
+        }
+
+        function updateHUD() {
+            document.getElementById('hud-score').innerText = score;
+            document.getElementById('hud-streak').innerText = streak;
+            if (mode === 'endless') {
+                let hearts = ''; for(let i=0; i<3; i++) hearts += (i < lives) ? '❤️' : '🖤'; document.getElementById('hud-lives').innerText = hearts;
+            } else if (mode === 'campaign') {
+                const target = CAMPAIGN_LEVELS[currentLevel].target;
+                const progress = Math.min(100, Math.floor((itemsSorted / target) * 100));
+                document.getElementById('hud-campaign-progress').innerText = progress;
+            }
+        }
+
+        function gameOver() {
+            gameState = 'gameover';
+            DOM.gameover.classList.remove('hidden');
+            document.getElementById('final-score').innerText = score;
+            document.getElementById('restart-game-btn').innerText = "返回主畫面";
+            sendDataToSheet(score); // 【新增】觸發記錄上傳
+        }
+
+        function returnToStartMenu() {
+            gameState = 'menu'; DOM.hud.classList.add('hidden'); DOM.result.classList.add('hidden'); DOM.gameover.classList.add('hidden');
+            DOM.campaignComplete.classList.add('hidden'); DOM.tutorial.classList.add('hidden'); DOM.start.classList.remove('hidden');
+            ctx.clearRect(0,0,width,height);
+        }
+
+        function confirmReturnHome() { document.getElementById('return-confirm-modal').style.display = 'flex'; }
+
+        function startTutorial() { gameState = 'playing'; isTutorialPaused = true; processTutorialStep(); }
+
+        function processTutorialStep() {
+            items = []; isTutorialPaused = true; DOM.tutorial.classList.remove('hidden');
+            const title = document.getElementById('tutorial-title'); const text = document.getElementById('tutorial-instruction');
+            if (tutorialStep === 0) {
+                title.innerText = "認識廢紙分類"; text.innerHTML = "像 <span class='font-bold text-blue-600'>紙箱 📦</span>、報紙等廢紙都可以回收！<br><br>請把它拖到<span class='font-bold text-blue-600'>藍色</span>的「廢紙」桶。"; spawnItem(ITEM_TYPES.find(t => t.emoji === '📦'));
+            } else if (tutorialStep === 1) {
+                title.innerText = "塑膠容器分類"; text.innerHTML = "我們日常使用的 <span class='font-bold text-amber-700'>塑膠袋 🛍️</span> 或飲料杯屬於塑膠類。<br><br>請把它拖到<span class='font-bold text-amber-700'>棕色</span>的「塑膠」桶。"; spawnItem(ITEM_TYPES.find(t => t.emoji === '🛍️'));
+            } else if (tutorialStep === 2) {
+                title.innerText = "金屬物品分類"; text.innerHTML = "喝完的 <span class='font-bold text-yellow-600'>易開罐 🥫</span>、鐵釘都屬於金屬資源。<br><br>請把它拖到<span class='font-bold text-yellow-600'>黃色</span>的「金屬」桶。"; spawnItem(ITEM_TYPES.find(t => t.emoji === '🥫'));
+            } else if (tutorialStep === 3) {
+                title.innerText = "玻璃瓶罐分類"; text.innerHTML = "用完的 <span class='font-bold text-green-600'>玻璃瓶 🍾</span> 或果醬罐要小心處理。<br><br>請把它拖到<span class='font-bold text-green-600'>綠色</span>的「玻璃」桶。"; spawnItem(ITEM_TYPES.find(t => t.emoji === '🍾'));
+            }
+            if (items.length > 0) items[0].y = height / 3;
+        }
+
+        function resumeTutorial() { DOM.tutorial.classList.add('hidden'); isTutorialPaused = false; }
+
+        function endTutorial() {
+            gameState = 'result'; DOM.result.classList.remove('hidden'); document.getElementById('result-title').innerText = "🎓 教學完成！";
+            document.getElementById('result-title').className = "text-3xl font-black mb-1 text-green-600"; document.getElementById('result-score-change').innerText = "你已經學會香港四色回收的所有技巧了！";
+            document.getElementById('next-btn').innerText = "返回主畫面";
+        }
+
+        function initAudio() { if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); if(audioCtx.state === 'suspended') audioCtx.resume(); }
+
+        function playSound(type) {
+            if(!audioCtx) return;
+            const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
+            osc.connect(gain); gain.connect(audioCtx.destination); const now = audioCtx.currentTime;
+            if (type === 'pop') { osc.type = 'sine'; osc.frequency.setValueAtTime(600, now); osc.frequency.exponentialRampToValueAtTime(1200, now + 0.1); gain.gain.setValueAtTime(0.1, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1); osc.start(now); osc.stop(now + 0.1); }
+            else if (type === 'success') { osc.type = 'triangle'; osc.frequency.setValueAtTime(659, now); osc.frequency.setValueAtTime(880, now + 0.1); gain.gain.setValueAtTime(0.15, now); gain.gain.linearRampToValueAtTime(0, now + 0.3); osc.start(now); osc.stop(now + 0.3); }
+            else if (type === 'error') { osc.type = 'sawtooth'; osc.frequency.setValueAtTime(200, now); osc.frequency.setValueAtTime(150, now + 0.2); gain.gain.setValueAtTime(0.2, now); gain.gain.linearRampToValueAtTime(0, now + 0.3); osc.start(now); osc.stop(now + 0.3); }
+            else if (type === 'explosion') { osc.type = 'square'; osc.frequency.setValueAtTime(100, now); osc.frequency.exponentialRampToValueAtTime(20, now + 0.4); gain.gain.setValueAtTime(0.3, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.4); osc.start(now); osc.stop(now + 0.4); }
+        }
+    </script>
+</body>
+</html>

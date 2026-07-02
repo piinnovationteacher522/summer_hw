@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>3D 小農夫算術：牧羊犬趕羊</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        * { -webkit-tap-highlight-color: transparent; touch-action: manipulation; box-sizing: border-box; }
+        body { margin: 0; overflow: hidden; background-color: #87CEEB; font-family: 'Comic Sans MS', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        #canvas-container { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; }
+        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; pointer-events: none; }
+        .panel { background: #ffffff; border-radius: 24px; box-shadow: 0 8px 32px rgba(0,0,0,0.18); pointer-events: auto; border: 4px solid #fcd34d; }
+        
+        /* 動畫特效 */
+        .shake { animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both; }
+        @keyframes shake {
+            10%, 90% { transform: translate3d(-2px, 2px, 0); }
+            20%, 80% { transform: translate3d(4px, -4px, 0); }
+            30%, 50%, 70% { transform: translate3d(-8px, 6px, 0); }
+            40%, 60% { transform: translate3d(8px, -6px, 0); }
+        }
+        .pop-in { animation: popIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+        @keyframes popIn { 0% { transform: scale(0); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+
+        /* 選擇題按鈕 */
+        .choice-pad { display: flex; gap: 12px; justify-content: center; margin-top: 12px; }
+        .choice-btn {
+            flex: 1; background: #3b82f6; color: #fff; font-size: 2rem; font-weight: 900;
+            border: 4px solid #2563eb; border-radius: 16px; padding: 16px 0; cursor: pointer;
+            transition: all 0.15s; user-select: none; -webkit-user-select: none;
+            box-shadow: 0 6px 0 #1d4ed8;
+        }
+        .choice-btn:active { transform: translateY(6px); box-shadow: 0 0px 0 #1d4ed8; background: #2563eb; }
+        .choice-btn.color-1 { background: #ef4444; border-color: #dc2626; box-shadow: 0 6px 0 #b91c1c; }
+        .choice-btn.color-1:active { background: #dc2626; box-shadow: 0 0px 0 #b91c1c; }
+        .choice-btn.color-2 { background: #10b981; border-color: #059669; box-shadow: 0 6px 0 #047857; }
+        .choice-btn.color-2:active { background: #059669; box-shadow: 0 0px 0 #047857; }
+        .choice-btn.color-3 { background: #f59e0b; border-color: #d97706; box-shadow: 0 6px 0 #b45309; }
+        .choice-btn.color-3:active { background: #d97706; box-shadow: 0 0px 0 #b45309; }
+
+        /* 排行榜表格 */
+        .lb-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+        .lb-table th { background: #fef3c7; padding: 8px; text-align: left; font-weight: 800; color: #92400e; border-radius: 8px 8px 0 0; }
+        .lb-table td { padding: 8px; border-bottom: 2px dashed #fde68a; }
+        .lb-table tr:nth-child(even) td { background: #fffbeb; }
+        .lb-table tr.me td { background: #dbeafe; font-weight: 800; color: #1e40af; }
+
+        @media (max-width: 640px) {
+            #question-panel {
+                position: fixed !important; bottom: 0 !important; top: auto !important;
+                right: 0 !important; left: 0 !important; width: 100% !important;
+                border-radius: 32px 32px 0 0 !important; border-bottom: none;
+                padding-bottom: 30px !important; box-shadow: 0 -12px 32px rgba(0,0,0,0.2) !important;
+            }
+            #hud { padding: 6px !important; }
+        }
+        
+        .modal-overlay {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 100;
+            display: flex; align-items: center; justify-content: center; padding: 16px;
+            backdrop-filter: blur(4px);
+        }
+        .modal-box { background: #fff; border-radius: 24px; padding: 28px; max-width: 360px; width: 100%; box-shadow: 0 12px 48px rgba(0,0,0,0.3); border: 4px solid #fcd34d; }
+        .btn-primary { width: 100%; background: #4f46e5; color: #fff; font-weight: 800; border: none; border-radius: 16px; padding: 14px; font-size: 1.1rem; cursor: pointer; margin-top: 14px; box-shadow: 0 4px 0 #3730a3; transition: transform 0.1s; }
+        .btn-primary:active { transform: translateY(4px); box-shadow: 0 0px 0 #3730a3; }
+        .btn-secondary { width: 100%; background: #f3f4f6; color: #4b5563; font-weight: 800; border: none; border-radius: 16px; padding: 12px; font-size: 1rem; cursor: pointer; margin-top: 12px; box-shadow: 0 4px 0 #d1d5db; transition: transform 0.1s; }
+        .btn-secondary:active { transform: translateY(4px); box-shadow: 0 0px 0 #d1d5db; }
+    </style>
+</head>
+<body>
+
+    <div id="canvas-container"></div>
+
+    <div id="lb-modal" class="modal-overlay" style="display:none;">
+        <div class="modal-box" style="max-width:400px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+                <h2 style="font-size:1.3rem;font-weight:900;color:#92400e;">🏆 農場英雄榜</h2>
+                <button id="lb-close-btn" style="background:#fee2e2;border:none;border-radius:50%;width:32px;height:32px;font-size:1rem;font-weight:bold;cursor:pointer;color:#b91c1c;">✕</button>
+            </div>
+            <div style="display:flex;gap:8px;margin-bottom:16px;">
+                <button id="lb-tab-campaign" style="flex:1;padding:10px;border-radius:12px;font-weight:800;border:none;cursor:pointer;background:#f59e0b;color:#fff;box-shadow:0 3px 0 #d97706;">闖關模式</button>
+                <button id="lb-tab-endless" style="flex:1;padding:10px;border-radius:12px;font-weight:800;border:none;cursor:pointer;background:#f3f4f6;color:#6b7280;box-shadow:0 3px 0 #d1d5db;">挑戰模式</button>
+            </div>
+            <div id="lb-content" style="max-height:300px;overflow-y:auto; border-radius:8px; border:2px solid #fde68a;">
+                <p style="color:#9ca3af;font-size:1rem;text-align:center;padding:30px 0;font-weight:bold;">載入中...</p>
+            </div>
+            <button class="btn-secondary" id="lb-back-btn">返回主畫面</button>
+        </div>
+    </div>
+
+    <div id="hud" class="absolute top-0 left-0 w-full p-4 flex justify-between items-start z-20 pointer-events-none hidden">
+        <button id="back-home-btn" onclick="confirmReturnHome()" style="pointer-events:auto;background:#fff;color:#ef4444;border:3px solid #ef4444;border-radius:16px;padding:8px 16px;font-size:1rem;font-weight:900;cursor:pointer;box-shadow:0 4px 0 #dc2626;display:flex;align-items:center;gap:5px;">
+            🏠 回家
+        </button>
+        
+        <div id="hud-stats" style="display:none;background:#fff;border:3px solid #3b82f6;color:#1e40af;padding:8px 16px;border-radius:16px;box-shadow:0 4px 0 #2563eb;text-align:center;">
+            <div style="font-size:1.2rem;font-weight:900;">⭐ <span id="hud-score">0</span> 分</div>
+            <div style="font-size:0.85rem;font-weight:800;color:#059669;margin-top:2px;">連對: <span id="hud-streak">0</span></div>
+        </div>
+        
+        <div id="hud-time-wrap" style="display:none;background:#fff;border:3px solid #f59e0b;color:#d97706;padding:8px 16px;border-radius:16px;box-shadow:0 4px 0 #d97706;text-align:center;">
+            <div id="hud-time-label" style="font-size:0.75rem;font-weight:800;">時間</div>
+            <div id="hud-time" style="font-size:1.4rem;font-weight:900;">50s</div>
+        </div>
+
+        <div id="hud-campaign" style="display:none;background:#fff;border:3px solid #10b981;color:#047857;padding:8px 16px;border-radius:16px;box-shadow:0 4px 0 #059669;text-align:center;">
+            <div style="font-size:0.85rem;font-weight:800;">闖關挑戰</div>
+            <div style="font-size:1.1rem;font-weight:900;">第 <span id="hud-campaign-level">1</span>/15 關</div>
+            <div style="font-size:0.9rem;font-weight:800;color:#059669;margin-top:2px;">⏱ <span id="hud-campaign-timer">0</span>s</div>
+        </div>
+    </div>
+
+    <div id="return-confirm-modal" class="modal-overlay" style="display:none;">
+        <div class="modal-box" style="text-align:center;">
+            <div style="font-size:3rem;margin-bottom:8px;">🏠</div>
+            <h3 style="font-size:1.3rem;font-weight:900;color:#92400e;margin-bottom:8px;">確定要回主畫面嗎？</h3>
+            <p style="color:#6b7280;font-size:0.95rem;margin-bottom:20px;font-weight:bold;">現在離開，羊群會迷路喔！</p>
+            <button id="confirm-return-yes" class="btn-primary" style="background:#ef4444;box-shadow:0 4px 0 #b91c1c;margin-top:0;">確定離開</button>
+            <button id="confirm-return-no" class="btn-secondary">繼續玩</button>
+        </div>
+    </div>
+
+    <div id="ui-layer" class="flex items-center justify-center">
+        <div id="start-panel" class="panel pop-in" style="padding:32px;max-width:380px;width:calc(100% - 32px);margin:16px;text-align:center;background:#fffbeb;">
+            <div style="font-size:3.5rem;margin-bottom:10px;text-shadow: 2px 2px 0px rgba(0,0,0,0.1);">🐶🐑</div>
+            <h1 style="font-size:2rem;font-weight:900;color:#92400e;margin-bottom:8px;line-height:1.2;">3D 小農夫算術<br><span style="font-size:1.4rem;color:#d97706;">牧羊犬趕羊</span></h1>
+            <p style="color:#78350f;font-size:1rem;font-weight:bold;margin-bottom:24px;">農場算術大挑戰！</p>
+            
+            <div style="display:flex;flex-direction:column;gap:14px;">
+                <button id="campaign-btn" class="btn-primary" style="background:#10b981;box-shadow:0 6px 0 #059669;font-size:1.2rem;padding:16px;margin:0;">🗺️ 闖關模式 (15關)</button>
+                <button id="init-btn" class="btn-primary" style="background:#3b82f6;box-shadow:0 6px 0 #2563eb;font-size:1.2rem;padding:16px;margin:0;">⏱️ 無盡挑戰</button>
+                <button id="tutorial-btn" class="btn-primary" style="background:#f59e0b;box-shadow:0 6px 0 #d97706;font-size:1.1rem;padding:14px;margin:0;">🎓 教學練習</button>
+                <button id="leaderboard-btn" class="btn-secondary" style="margin:0;font-size:1rem;">🏆 英雄排行榜</button>
+            </div>
+        </div>
+
+        <div id="question-panel" class="panel hidden absolute top-32 right-4" style="padding:20px; width:340px; z-index: 50; background:#fffbeb;">
+            <div id="mode-badge" style="background:#10b981;color:#fff;text-align:center;font-weight:900;padding:6px;font-size:1rem;border-radius:12px;margin-bottom:12px;box-shadow:0 2px 0 #059669;">第 1 關</div>
+            <h3 style="font-size:1.2rem;font-weight:900;color:#92400e;text-align:center;margin-bottom:8px;">🐶 牧羊犬需要幫忙！</h3>
+            <p id="mission-instruction" style="font-size:1.05rem;color:#78350f;font-weight:bold;text-align:center;margin-bottom:12px;line-height:1.5;">
+                </p>
+            <div id="choices-container" class="choice-pad"></div>
+        </div>
+
+        <div id="status-panel" class="hidden absolute top-32 left-1/2 -translate-x-1/2" style="background:#fff;border:4px solid #f59e0b;color:#d97706;padding:12px 24px;border-radius:999px;font-weight:900;font-size:1.2rem;box-shadow:0 6px 16px rgba(0,0,0,0.2);">
+            🐶 汪汪！趕羊中...
+        </div>
+
+        <div id="result-panel" class="panel hidden" style="padding:28px;max-width:320px;width:calc(100% - 32px);margin:16px;text-align:center;background:#fffbeb;">
+            <div id="result-emoji" style="font-size:4rem;margin-bottom:0;">🌟</div>
+            <h2 id="result-title" style="font-size:1.8rem;font-weight:900;margin-bottom:8px;">好棒！</h2>
+            <p id="result-msg" style="color:#78350f;font-weight:bold;font-size:1.1rem;margin-bottom:20px;"></p>
+            <button id="next-btn" class="btn-primary" style="background:#10b981;box-shadow:0 6px 0 #059669;font-size:1.2rem;">繼續玩</button>
+        </div>
+
+        <div id="gameover-panel" class="panel hidden" style="padding:32px;max-width:320px;width:calc(100% - 32px);margin:16px;text-align:center;border-color:#ef4444;background:#fef2f2;">
+            <div style="font-size:3.5rem;margin-bottom:8px;">⏰</div>
+            <h2 style="font-size:2.2rem;font-weight:900;color:#b91c1c;margin-bottom:12px;">時間到！</h2>
+            <p style="color:#991b1b;font-weight:bold;font-size:1.1rem;margin-bottom:8px;">你獲得了</p>
+            <p id="final-score" style="font-size:3.5rem;font-weight:900;color:#f59e0b;margin-bottom:8px;text-shadow: 2px 2px 0px rgba(0,0,0,0.1);">0</p>
+            <p style="color:#991b1b;font-weight:bold;font-size:1rem;margin-bottom:24px;">顆星星 ⭐</p>
+            <button id="restart-game-btn" class="btn-primary" style="background:#ef4444;box-shadow:0 6px 0 #b91c1c;">回主畫面</button>
+        </div>
+
+        <div id="campaign-complete-panel" class="panel hidden" style="padding:32px;max-width:320px;width:calc(100% - 32px);margin:16px;text-align:center;border-color:#f59e0b;background:#fffbeb;">
+            <div style="font-size:4rem;margin-bottom:8px;">🏆</div>
+            <h2 style="font-size:1.8rem;font-weight:900;color:#b45309;margin-bottom:12px;">全部闖關成功！</h2>
+            <p style="color:#78350f;font-weight:bold;font-size:1rem;margin-bottom:8px;">答對題數</p>
+            <p id="campaign-correct-count" style="font-size:2.5rem;font-weight:900;color:#10b981;margin-bottom:20px;">15/15</p>
+            <button id="view-lb-btn" class="btn-primary" style="background:#3b82f6;box-shadow:0 6px 0 #2563eb;margin-bottom:12px;">看排行榜</button>
+            <button id="campaign-restart-btn" class="btn-secondary">回主畫面</button>
+        </div>
+    </div>
+
+    <script>
+        // 【新增】接收主網頁傳來的學生資料
+        const urlParams = new URLSearchParams(window.location.search);
+        const studentClass = urlParams.get('class') || '未設定班別';
+        const studentId = urlParams.get('id') || '未設定學號';
+
+        const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwHKY-YDXziCb0eCZtW-GQ9MGUQshKIIJk1qJgX7TPqTL1YwThCrvCld5YNSH9CSwpPew/exec"; 
+
+        // 【新增】上傳紀錄函數
+        function sendDataToSheet(finalScore) {
+            const timeSpent = gameActiveTime;
+            const gameModeName = isCampaignMode ? '農場(關卡)' : '農場(無盡)';
+            const data = {
+                gameName: gameModeName,
+                studentClass: studentClass,
+                studentId: studentId,
+                playDate: new Date().toLocaleDateString('zh-HK'),
+                playTime: timeSpent + "秒",
+                score: finalScore
+            };
+            fetch(GAS_WEB_APP_URL, {
+                method: 'POST',
+                body: JSON.stringify(data),
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' }
+            }).then(res => res.json()).then(res => console.log('成績上傳成功', res)).catch(err => console.error('成績上傳失敗', err));
+        }
+
+        let scene, camera, renderer;
+        let sheepArray = [];       
+        let outsideSheep = [];     
+        let animatingSheep = [];   
+        let dogMesh, signMesh;
+        let isAnimatingEvent = false;
+
+        let currentMissionType = ''; 
+        let correctAnswer = 0;
+        let scenarioData = {}; 
+
+        let score = 0, timeLeft = 50, level = 1, streak = 0;
+        let isGameOver = false;
+
+        let isTutorialMode = false, tutorialStep = 0, tutorialCompleted = false;
+        let isCampaignMode = false, campaignStep = 0, campaignCorrect = 0;
+        let gameActiveTime = 0;
+        let timerInterval = null, campaignTimerInterval = null;
+        let campaignAnswers = [];
+        let audioCtx;
+
+        const CAMPAIGN_LEVELS = [
+            { type: 'missing', target: 5, current: 2 },        
+            { type: 'combine', left: 2, right: 4 },            
+            { type: 'overcrowded', limit: 4, current: 6 },     
+            { type: 'missing', target: 8, current: 3 },        
+            { type: 'combine', left: 5, right: 3 },            
+            { type: 'overcrowded', limit: 5, current: 8 },     
+            { type: 'missing', target: 10, current: 6 },       
+            { type: 'combine', left: 6, right: 5 },            
+            { type: 'overcrowded', limit: 6, current: 10 },    
+            { type: 'missing', target: 15, current: 8 },       
+            { type: 'combine', left: 7, right: 8 },            
+            { type: 'overcrowded', limit: 8, current: 14 },    
+            { type: 'missing', target: 18, current: 11 },      
+            { type: 'combine', left: 9, right: 10 },           
+            { type: 'overcrowded', limit: 12, current: 20 }    
+        ];
+
+        const TUTORIAL_LEVELS = [
+            { type: 'missing', target: 4, current: 1, msg: "【第一課：找同伴】<br>我們需要 4 隻羊，現在圍欄裡只有 1 隻。<br>請選出還<span style='color:#dc2626'>缺幾隻</span>呢？" },
+            { type: 'combine', left: 2, right: 3, msg: "【第二課：大集合】<br>左邊來了 2 隻，右邊來了 3 隻。<br>請選出<span style='color:#dc2626'>總共有幾隻</span>要進圍欄？" },
+            { type: 'overcrowded', limit: 3, current: 5, msg: "【第三課：客滿啦】<br>告示牌寫最多只能住 3 隻，裡面卻擠了 5 隻。<br>請選出要<span style='color:#dc2626'>趕幾隻出去</span>？" }
+        ];
+
+        const DOM = {
+            start: document.getElementById('start-panel'), hud: document.getElementById('hud'),
+            question: document.getElementById('question-panel'), status: document.getElementById('status-panel'),
+            result: document.getElementById('result-panel'), gameover: document.getElementById('gameover-panel'),
+            campaignComplete: document.getElementById('campaign-complete-panel'), container: document.getElementById('canvas-container')
+        };
+
+        async function fetchLeaderboardFromCloud(mode) {
+            try { const r = await fetch(`${GAS_WEB_APP_URL}?mode=${mode}`); return await r.json(); } catch (err) { return []; }
+        }
+
+        async function renderLeaderboard(mode) {
+            const el = document.getElementById('lb-content');
+            el.innerHTML = '<p style="color:#9ca3af;font-size:1rem;text-align:center;padding:30px 0;font-weight:bold;">⏳ 讀取成績中...</p>';
+            const entries = await fetchLeaderboardFromCloud(mode);
+            if (entries.length === 0) { el.innerHTML = '<p style="color:#d1d5db;font-size:1rem;text-align:center;padding:30px 0;font-weight:bold;">還沒有人挑戰喔，快來當第一名！</p>'; return; }
+            let rows = entries.map((e, i) => {
+                const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i+1}.`;
+                const right = mode === 'campaign' ? `${e.correct}/15 題` : `${e.score} 星星`;
+                return `<tr><td>${medal}</td><td>${e.cls} ${e.num}</td><td>${right}</td></tr>`;
+            }).join('');
+            el.innerHTML = `<table class="lb-table"><thead><tr><th>排名</th><th>小農夫</th><th>成績</th></tr></thead><tbody>${rows}</tbody></table>`;
+        }
+
+        window.onload = function () {
+            document.getElementById('campaign-btn').addEventListener('click', () => initGame('campaign'));
+            document.getElementById('init-btn').addEventListener('click', () => initGame('endless'));
+            document.getElementById('tutorial-btn').addEventListener('click', () => initGame('tutorial'));
+            document.getElementById('leaderboard-btn').addEventListener('click', () => showLeaderboard('campaign'));
+
+            document.getElementById('lb-close-btn').addEventListener('click', () => { document.getElementById('lb-modal').style.display = 'none'; });
+            document.getElementById('lb-back-btn').addEventListener('click', () => { document.getElementById('lb-modal').style.display = 'none'; });
+            document.getElementById('lb-tab-campaign').addEventListener('click', () => { setLbTab('campaign'); });
+            document.getElementById('lb-tab-endless').addEventListener('click', () => { setLbTab('endless'); });
+
+            document.getElementById('next-btn').addEventListener('click', handleNextBtn);
+            document.getElementById('restart-game-btn').addEventListener('click', returnToStartMenu);
+            document.getElementById('campaign-restart-btn').addEventListener('click', returnToStartMenu);
+            document.getElementById('view-lb-btn').addEventListener('click', () => showLeaderboard('campaign'));
+
+            document.getElementById('confirm-return-yes').addEventListener('click', () => { document.getElementById('return-confirm-modal').style.display = 'none'; returnToStartMenu(); });
+            document.getElementById('confirm-return-no').addEventListener('click', () => { document.getElementById('return-confirm-modal').style.display = 'none'; });
+
+            init3D(); animate();
+        };
+
+        function setLbTab(tab) {
+            document.getElementById('lb-tab-campaign').style.background = tab === 'campaign' ? '#f59e0b' : '#f3f4f6'; document.getElementById('lb-tab-campaign').style.color = tab === 'campaign' ? '#fff' : '#6b7280';
+            document.getElementById('lb-tab-endless').style.background = tab === 'endless' ? '#3b82f6' : '#f3f4f6'; document.getElementById('lb-tab-endless').style.color = tab === 'endless' ? '#fff' : '#6b7280';
+            renderLeaderboard(tab);
+        }
+        function showLeaderboard(tab) { setLbTab(tab); document.getElementById('lb-modal').style.display = 'flex'; }
+        function confirmReturnHome() { document.getElementById('return-confirm-modal').style.display = 'flex'; }
+
+        function initAudio() { if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); if(audioCtx.state === 'suspended') audioCtx.resume(); }
+        function playSound(type) {
+            if(!audioCtx) return;
+            const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            const now = audioCtx.currentTime;
+            if (type === 'baa') { osc.type = 'sawtooth'; osc.frequency.setValueAtTime(200, now); osc.frequency.linearRampToValueAtTime(180, now + 0.3); gain.gain.setValueAtTime(0.1, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3); osc.start(now); osc.stop(now + 0.3); } 
+            else if (type === 'bark') { osc.type = 'square'; osc.frequency.setValueAtTime(300, now); osc.frequency.exponentialRampToValueAtTime(100, now + 0.1); gain.gain.setValueAtTime(0.15, now); gain.gain.linearRampToValueAtTime(0, now + 0.15); osc.start(now); osc.stop(now + 0.15); } 
+            else if (type === 'success') { osc.type = 'sine'; osc.frequency.setValueAtTime(523.25, now); osc.frequency.setValueAtTime(659.25, now + 0.1); osc.frequency.setValueAtTime(783.99, now + 0.2); gain.gain.setValueAtTime(0.2, now); gain.gain.linearRampToValueAtTime(0, now + 0.5); osc.start(now); osc.stop(now + 0.5); } 
+            else if (type === 'wrong') { osc.type = 'triangle'; osc.frequency.setValueAtTime(200, now); osc.frequency.linearRampToValueAtTime(100, now + 0.4); gain.gain.setValueAtTime(0.2, now); gain.gain.linearRampToValueAtTime(0, now + 0.4); osc.start(now); osc.stop(now + 0.4); }
+        }
+
+        function init3D() {
+            scene = new THREE.Scene(); scene.background = new THREE.Color(0x87CEEB);
+            camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 18, 22); camera.lookAt(0, 0, 0);
+            renderer = new THREE.WebGLRenderer({ antialias: true }); renderer.setSize(window.innerWidth, window.innerHeight); renderer.shadowMap.enabled = true;
+            DOM.container.appendChild(renderer.domElement);
+
+            scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+            const dirLight = new THREE.DirectionalLight(0xffffff, 0.8); dirLight.position.set(10, 20, 10); dirLight.castShadow = true; dirLight.shadow.mapSize.width = 1024; dirLight.shadow.mapSize.height = 1024; scene.add(dirLight);
+
+            const ground = new THREE.Mesh(new THREE.PlaneGeometry(100, 100), new THREE.MeshLambertMaterial({ color: 0x86efac }));
+            ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
+            buildEnvironment(); window.addEventListener('resize', () => { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); }, false);
+        }
+
+        let fenceGroup = new THREE.Group();
+        function buildEnvironment() {
+            scene.add(fenceGroup);
+            const woodMat = new THREE.MeshLambertMaterial({ color: 0xa16207 });
+            const postGeo = new THREE.CylinderGeometry(0.2, 0.2, 1.5, 8); const railGeo = new THREE.BoxGeometry(8, 0.2, 0.1);
+            
+            const makeWall = (x, z, rotY) => {
+                const g = new THREE.Group();
+                const p1 = new THREE.Mesh(postGeo, woodMat); p1.position.set(-3.8, 0.75, 0); p1.castShadow = true; g.add(p1);
+                const p2 = new THREE.Mesh(postGeo, woodMat); p2.position.set(3.8, 0.75, 0); p2.castShadow = true; g.add(p2);
+                const r1 = new THREE.Mesh(railGeo, woodMat); r1.position.set(0, 1.1, 0); r1.castShadow = true; g.add(r1);
+                const r2 = new THREE.Mesh(railGeo, woodMat); r2.position.set(0, 0.5, 0); r2.castShadow = true; g.add(r2);
+                g.position.set(x, 0, z); g.rotation.y = rotY;
+                g.userData = { initialRotY: rotY, isFalling: false }; fenceGroup.add(g);
+            };
+
+            makeWall(0, -4, 0); makeWall(-4, 0, Math.PI/2); makeWall(4, 0, Math.PI/2); 
+            
+            const pFrontLeft = new THREE.Mesh(postGeo, woodMat); pFrontLeft.position.set(-3.8, 0.75, 4); pFrontLeft.castShadow = true; pFrontLeft.userData = { initialRotY: 0, isFalling: false }; fenceGroup.add(pFrontLeft);
+            const pFrontRight = new THREE.Mesh(postGeo, woodMat); pFrontRight.position.set(3.8, 0.75, 4); pFrontRight.castShadow = true; pFrontRight.userData = { initialRotY: 0, isFalling: false }; fenceGroup.add(pFrontRight);
+
+            const doorRailGeo = new THREE.BoxGeometry(3.8, 0.2, 0.1);
+            window.gateLeft = new THREE.Group(); gateLeft.position.set(-3.8, 0, 4);
+            const gl1 = new THREE.Mesh(doorRailGeo, woodMat); gl1.position.set(1.9, 1.1, 0); gl1.castShadow = true;
+            const gl2 = new THREE.Mesh(doorRailGeo, woodMat); gl2.position.set(1.9, 0.5, 0); gl2.castShadow = true;
+            gateLeft.add(gl1, gl2); gateLeft.rotation.y = -Math.PI / 2; gateLeft.userData = { initialRotY: -Math.PI / 2, targetRotY: -Math.PI / 2, isFalling: false }; fenceGroup.add(gateLeft);
+
+            window.gateRight = new THREE.Group(); gateRight.position.set(3.8, 0, 4);
+            const gr1 = new THREE.Mesh(doorRailGeo, woodMat); gr1.position.set(-1.9, 1.1, 0); gr1.castShadow = true;
+            const gr2 = new THREE.Mesh(doorRailGeo, woodMat); gr2.position.set(-1.9, 0.5, 0); gr2.castShadow = true;
+            gateRight.add(gr1, gr2); gateRight.rotation.y = Math.PI / 2; gateRight.userData = { initialRotY: Math.PI / 2, targetRotY: Math.PI / 2, isFalling: false }; fenceGroup.add(gateRight);
+
+            const signPostGeo = new THREE.CylinderGeometry(0.12, 0.12, 3);
+            const sp1 = new THREE.Mesh(signPostGeo, woodMat); sp1.position.set(-4.5, 1.5, -4); sp1.castShadow = true; scene.add(sp1);
+            const sp2 = new THREE.Mesh(signPostGeo, woodMat); sp2.position.set(-1.5, 1.5, -4); sp2.castShadow = true; scene.add(sp2);
+            
+            signMesh = new THREE.Mesh(new THREE.BoxGeometry(4, 2, 0.2), new THREE.MeshLambertMaterial({ color: 0xfef3c7 }));
+            signMesh.position.set(-3, 2.5, -3.9); signMesh.castShadow = true; scene.add(signMesh);
+            updateSignText("準備中");
+
+            dogMesh = createDog(); dogMesh.position.set(15, 0, 15); scene.add(dogMesh);
+        }
+
+        function updateSignText(text) {
+            const canvas = document.createElement('canvas'); canvas.width = 512; canvas.height = 256; const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#fef3c7'; ctx.fillRect(0,0,512,256); ctx.strokeStyle = '#92400e'; ctx.lineWidth = 12; ctx.strokeRect(6,6,500,244);
+            ctx.fillStyle = '#92400e'; ctx.font = 'bold 65px "Comic Sans MS", sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            const lines = text.split('\n'); if(lines.length === 1) { ctx.fillText(lines[0], 256, 128); } else { ctx.fillText(lines[0], 256, 90); ctx.font = 'bold 75px "Comic Sans MS", sans-serif'; ctx.fillStyle = '#dc2626'; ctx.fillText(lines[1], 256, 180); }
+            const tex = new THREE.CanvasTexture(canvas); signMesh.material.map = tex; signMesh.material.needsUpdate = true;
+        }
+
+        function createSheep() {
+            const g = new THREE.Group(); const woolMat = new THREE.MeshLambertMaterial({ color: 0xffffff }); const skinMat = new THREE.MeshLambertMaterial({ color: 0x1f2937 });
+            const body = new THREE.Mesh(new THREE.SphereGeometry(0.6, 7, 7), woolMat); body.position.y = 0.7; body.scale.z = 1.2; body.castShadow = true; g.add(body);
+            const head = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.4, 0.5), skinMat); head.position.set(0, 0.9, 0.8); head.castShadow = true; g.add(head);
+            const eyeGeo = new THREE.SphereGeometry(0.05, 4, 4); const eyeMat = new THREE.MeshBasicMaterial({color: 0xffffff});
+            const e1 = new THREE.Mesh(eyeGeo, eyeMat); e1.position.set(0.15, 1.0, 1.0); g.add(e1); const e2 = new THREE.Mesh(eyeGeo, eyeMat); e2.position.set(-0.15, 1.0, 1.0); g.add(e2);
+            const legGeo = new THREE.CylinderGeometry(0.08, 0.06, 0.5); const legPoss = [[0.3, 0.25, 0.4], [-0.3, 0.25, 0.4], [0.3, 0.25, -0.4], [-0.3, 0.25, -0.4]];
+            legPoss.forEach(pos => { const leg = new THREE.Mesh(legGeo, skinMat); leg.position.set(...pos); leg.castShadow = true; g.add(leg); });
+            return g;
+        }
+
+        function createDog() {
+            const g = new THREE.Group(); const furMat = new THREE.MeshLambertMaterial({ color: 0xd97706 }); const whiteMat = new THREE.MeshLambertMaterial({ color: 0xffffff }); const darkMat = new THREE.MeshLambertMaterial({ color: 0x111827 });
+            
+            const body = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 1.2, 8), furMat); body.rotation.x = Math.PI/2; body.position.set(0, 0.55, 0); body.castShadow = true; g.add(body);
+            const head = new THREE.Mesh(new THREE.SphereGeometry(0.38, 8, 8), furMat); head.position.set(0, 0.9, 0.55); head.castShadow = true; g.add(head);
+            const snout = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.2, 0.35), whiteMat); snout.position.set(0, 0.8, 0.8); snout.castShadow = true; g.add(snout);
+            const nose = new THREE.Mesh(new THREE.SphereGeometry(0.08, 4, 4), darkMat); nose.position.set(0, 0.9, 0.95); g.add(nose);
+            
+            const earGeo = new THREE.CylinderGeometry(0.06, 0.06, 0.25, 6);
+            const ear1 = new THREE.Mesh(earGeo, darkMat); ear1.position.set(0.3, 0.85, 0.5); ear1.rotation.z = -0.4; ear1.rotation.x = 0.2; g.add(ear1);
+            const ear2 = new THREE.Mesh(earGeo, darkMat); ear2.position.set(-0.3, 0.85, 0.5); ear2.rotation.z = 0.4; ear2.rotation.x = 0.2; g.add(ear2);
+            
+            const tail = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.08, 0.4), whiteMat); tail.position.set(0, 0.75, -0.5); tail.rotation.x = Math.PI/4; g.add(tail);
+            const legGeo = new THREE.CylinderGeometry(0.08, 0.06, 0.4);
+            [ [0.2, 0.2, 0.3], [-0.2, 0.2, 0.3], [0.2, 0.2, -0.3], [-0.2, 0.2, -0.3] ].forEach(p => { const leg = new THREE.Mesh(legGeo, furMat); leg.position.set(...p); leg.castShadow = true; g.add(leg); });
+            return g;
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            for (let i = animatingSheep.length - 1; i >= 0; i--) {
+                let obj = animatingSheep[i]; let s = obj.mesh;
+                let dx = obj.targetX - s.position.x; let dz = obj.targetZ - s.position.z; let dist = Math.sqrt(dx*dx + dz*dz);
+                if (dist > 0.1) { s.position.x += (dx / dist) * obj.speed; s.position.z += (dz / dist) * obj.speed; s.rotation.y = Math.atan2(dx, dz); s.position.y = Math.abs(Math.sin(Date.now() * 0.015)) * 0.3; } 
+                else { s.position.x = obj.targetX; s.position.z = obj.targetZ; s.position.y = 0; if (obj.onReach) obj.onReach(obj, i); }
+            }
+
+            if (dogMesh.userData.isMoving) {
+                let dx = dogMesh.userData.tx - dogMesh.position.x; let dz = dogMesh.userData.tz - dogMesh.position.z; let dist = Math.sqrt(dx*dx + dz*dz);
+                if (dist > 0.2) { 
+                    dogMesh.position.x += (dx / dist) * dogMesh.userData.speed; 
+                    dogMesh.position.z += (dz / dist) * dogMesh.userData.speed; 
+                    dogMesh.rotation.y = Math.atan2(dx, dz); 
+                    if (!dogMesh.userData.isJumping) dogMesh.position.y = Math.abs(Math.sin(Date.now() * 0.02)) * 0.3; 
+                } 
+                else { dogMesh.userData.isMoving = false; }
+            }
+
+            if (dogMesh.userData.isJumping) {
+                dogMesh.position.y = Math.abs(Math.sin(Date.now() * 0.015)) * 0.8; 
+                if (!dogMesh.userData.isMoving) dogMesh.rotation.y = Math.PI; 
+            } else if (!dogMesh.userData.isMoving) {
+                dogMesh.position.y += (0 - dogMesh.position.y) * 0.2; 
+            }
+
+            fenceGroup.children.forEach(wall => {
+                if (wall.userData.isFalling) { wall.rotateX(-0.06); wall.position.y -= 0.08; if (wall.position.y < -3) wall.userData.isFalling = false; }
+            });
+
+            if (window.gateLeft && !window.gateLeft.userData.isFalling) {
+                window.gateLeft.rotation.y += (window.gateLeft.userData.targetRotY - window.gateLeft.rotation.y) * 0.1;
+                window.gateRight.rotation.y += (window.gateRight.userData.targetRotY - window.gateRight.rotation.y) * 0.1;
+            }
+
+            sheepArray.forEach(s => {
+                if(Math.random() < 0.01) { s.userData.tx = s.position.x + (Math.random()-0.5); s.userData.tz = s.position.z + (Math.random()-0.5); s.userData.tx = Math.max(-3, Math.min(3, s.userData.tx)); s.userData.tz = Math.max(-3, Math.min(3, s.userData.tz)); }
+                if(s.userData.tx !== undefined) {
+                    let dx = s.userData.tx - s.position.x; let dz = s.userData.tz - s.position.z; let dist = Math.sqrt(dx*dx + dz*dz);
+                    if(dist > 0.1) { s.position.x += dx * 0.02; s.position.z += dz * 0.02; s.rotation.y = Math.atan2(dx, dz); s.position.y = Math.abs(Math.sin(Date.now() * 0.01)) * 0.15; } else { s.position.y = 0; }
+                }
+            });
+
+            renderer.render(scene, camera);
+        }
+
+        function initGame(mode) {
+            initAudio(); isTutorialMode = (mode === 'tutorial'); isCampaignMode = (mode === 'campaign');
+            tutorialStep = 0; tutorialCompleted = false; campaignStep = 0; campaignCorrect = 0; campaignAnswers = [];
+            gameActiveTime = 0;
+            if (timerInterval) clearInterval(timerInterval); if (campaignTimerInterval) clearInterval(campaignTimerInterval);
+            DOM.start.classList.add('hidden'); DOM.hud.classList.remove('hidden');
+
+            if (isTutorialMode) { document.getElementById('hud-stats').style.display = 'none'; document.getElementById('hud-time-wrap').style.display = 'none'; document.getElementById('hud-campaign').style.display = 'none'; } 
+            else if (isCampaignMode) {
+                document.getElementById('hud-stats').style.display = 'none'; document.getElementById('hud-time-wrap').style.display = 'none'; document.getElementById('hud-campaign').style.display = 'block';
+                document.getElementById('hud-campaign-timer').innerText = '0';
+            } else {
+                document.getElementById('hud-stats').style.display = 'block'; document.getElementById('hud-time-wrap').style.display = 'block'; document.getElementById('hud-campaign').style.display = 'none';
+            }
+            resetFullGame();
+        }
+
+        function returnToStartMenu() {
+            clearField(); if(timerInterval) clearInterval(timerInterval); if(campaignTimerInterval) clearInterval(campaignTimerInterval);
+            DOM.hud.classList.add('hidden'); DOM.question.classList.add('hidden'); DOM.result.classList.add('hidden'); DOM.gameover.classList.add('hidden');
+            DOM.campaignComplete.classList.add('hidden'); DOM.status.classList.add('hidden'); DOM.start.classList.remove('hidden');
+        }
+
+        function clearField() {
+            sheepArray.forEach(s => scene.remove(s)); sheepArray = [];
+            outsideSheep.forEach(s => scene.remove(s)); outsideSheep = [];
+            animatingSheep.forEach(obj => scene.remove(obj.mesh)); animatingSheep = [];
+            dogMesh.position.set(15,0,15); dogMesh.userData.isMoving = false; dogMesh.userData.isJumping = false;
+            
+            fenceGroup.children.forEach(wall => {
+                if (wall.userData.initialRotY !== undefined) wall.rotation.set(0, wall.userData.initialRotY, 0);
+                wall.position.y = 0; wall.userData.isFalling = false;
+                if (wall === window.gateLeft) wall.userData.targetRotY = -Math.PI / 2;
+                if (wall === window.gateRight) wall.userData.targetRotY = Math.PI / 2;
+            });
+        }
+
+        function resetFullGame() {
+            score = 0; timeLeft = 50; level = 1; streak = 0; isGameOver = false;
+            if (!isTutorialMode) {
+                if (isCampaignMode) {
+                    campaignTimerInterval = setInterval(() => { 
+                        if (isGameOver || isAnimatingEvent) return; 
+                        gameActiveTime++; 
+                        document.getElementById('hud-campaign-timer').innerText = gameActiveTime; 
+                    }, 1000);
+                } else {
+                    updateHUD();
+                    timerInterval = setInterval(() => { 
+                        if(isGameOver || isAnimatingEvent) return; 
+                        gameActiveTime++; 
+                        timeLeft--; updateHUD(); 
+                        if(timeLeft <= 0) triggerGameOver(); 
+                    }, 1000);
+                }
+            }
+            startNextRound();
+        }
+
+        function updateHUD() {
+            document.getElementById('hud-score').innerText = score; document.getElementById('hud-streak').innerText = streak; document.getElementById('hud-time').innerText = timeLeft + 's';
+            document.getElementById('hud-time').style.color = timeLeft <= 10 ? "#dc2626" : "#d97706";
+        }
+
+        function triggerGameOver() {
+            isGameOver = true; clearInterval(timerInterval); DOM.question.classList.add('hidden'); DOM.result.classList.add('hidden'); 
+            DOM.gameover.classList.remove('hidden'); DOM.gameover.classList.add('pop-in'); document.getElementById('final-score').innerText = score;
+            sendDataToSheet(score); // 【新增】上傳紀錄
+        }
+
+        function spawnSheepAt(count, xMin, xMax, zMin, zMax) {
+            let arr = [];
+            for(let i=0; i<count; i++) {
+                let s = createSheep(); s.position.set(xMin + Math.random()*(xMax-xMin), 0, zMin + Math.random()*(zMax-zMin));
+                s.rotation.y = Math.random() * Math.PI * 2; scene.add(s); arr.push(s);
+            }
+            return arr;
+        }
+
+        function startNextRound() {
+            clearField(); isAnimatingEvent = false;
+            let instructionHtml = '';
+
+            if (isCampaignMode) {
+                if (campaignStep >= CAMPAIGN_LEVELS.length) { handleNextBtn(); return; }
+                scenarioData = CAMPAIGN_LEVELS[campaignStep];
+                document.getElementById('mode-badge').innerText = `闖關：第 ${campaignStep+1} 關`; document.getElementById('hud-campaign-level').innerText = campaignStep + 1;
+            } else if (isTutorialMode) {
+                scenarioData = TUTORIAL_LEVELS[tutorialStep];
+                document.getElementById('mode-badge').innerText = `教學練習：第 ${tutorialStep + 1} 課`;
+                instructionHtml = scenarioData.msg;
+            } else {
+                const types = ['missing', 'combine', 'overcrowded'];
+                let t = types[Math.floor(Math.random() * types.length)];
+                if (t === 'missing') { let tg = Math.floor(Math.random() * 15) + 5; scenarioData = { type: t, target: tg, current: Math.floor(Math.random() * (tg - 1)) + 1 }; }
+                else if (t === 'combine') { scenarioData = { type: t, left: Math.floor(Math.random() * 9) + 1, right: Math.floor(Math.random() * 9) + 1 }; }
+                else if (t === 'overcrowded') { let lim = Math.floor(Math.random() * 10) + 4; scenarioData = { type: t, limit: lim, current: lim + Math.floor(Math.random() * 5) + 1 }; }
+                document.getElementById('mode-badge').innerText = `挑戰中`;
+            }
+
+            currentMissionType = scenarioData.type;
+
+            if (currentMissionType === 'missing') {
+                correctAnswer = scenarioData.target - scenarioData.current;
+                updateSignText(`目標:\n${scenarioData.target} 隻`);
+                sheepArray = spawnSheepAt(scenarioData.current, -3, 3, -3, 3);
+                if (!isTutorialMode) instructionHtml = `目標要 <span style="color:#dc2626;font-size:1.3rem;font-weight:900;">${scenarioData.target}</span> 隻，現在只有 <span style="color:#2563eb;font-size:1.3rem;font-weight:900;">${scenarioData.current}</span> 隻。<br>還缺幾隻羊呢？`;
+            } else if (currentMissionType === 'combine') {
+                correctAnswer = scenarioData.left + scenarioData.right;
+                updateSignText(`全部進場\n集合！`);
+                let leftSheep = spawnSheepAt(scenarioData.left, -5, -2, 7, 11);
+                let rightSheep = spawnSheepAt(scenarioData.right, 2, 5, 7, 11);
+                outsideSheep = leftSheep.concat(rightSheep);
+                if (!isTutorialMode) instructionHtml = `左邊來了 <span style="color:#2563eb;font-size:1.3rem;font-weight:900;">${scenarioData.left}</span> 隻，右邊來了 <span style="color:#2563eb;font-size:1.3rem;font-weight:900;">${scenarioData.right}</span> 隻。<br>加起來總共要進去幾隻？`;
+            } else if (currentMissionType === 'overcrowded') {
+                correctAnswer = scenarioData.current - scenarioData.limit;
+                updateSignText(`限住:\n${scenarioData.limit} 隻`);
+                sheepArray = spawnSheepAt(scenarioData.current, -2.5, 2.5, -2.5, 2.5); 
+                dogMesh.position.set(0, 0, 5.5);
+                dogMesh.rotation.y = Math.PI; 
+                if (!isTutorialMode) instructionHtml = `最多只能住 <span style="color:#dc2626;font-size:1.3rem;font-weight:900;">${scenarioData.limit}</span> 隻，卻擠了 <span style="color:#2563eb;font-size:1.3rem;font-weight:900;">${scenarioData.current}</span> 隻。<br>要趕走幾隻多出來的羊？`;
+            }
+
+            document.getElementById('mission-instruction').innerHTML = instructionHtml;
+            setTimeout(() => playSound('baa'), 200);
+            generateChoiceButtons(correctAnswer);
+
+            DOM.result.classList.add('hidden'); DOM.status.classList.add('hidden'); DOM.question.classList.remove('hidden'); DOM.question.classList.add('pop-in');
+        }
+
+        function generateChoiceButtons(ans) {
+            const container = document.getElementById('choices-container'); container.innerHTML = '';
+            let choices = [ans];
+            while (choices.length < 3) { let wrong = ans + (Math.floor(Math.random() * 5) - 2 || 3); if (wrong > 0 && !choices.includes(wrong)) choices.push(wrong); }
+            choices.sort(() => Math.random() - 0.5);
+            choices.forEach((num, i) => {
+                const btn = document.createElement('button'); btn.className = `choice-btn color-${i + 1}`; btn.innerText = num;
+                btn.onclick = () => handleAnswer(num === ans, num); container.appendChild(btn);
+            });
+        }
+
+        function handleAnswer(isCorrect, chosenNum) {
+            isAnimatingEvent = true; DOM.question.classList.add('hidden'); DOM.status.classList.remove('hidden');
+            if (isCampaignMode) campaignAnswers.push(isCorrect ? "O" : "X");
+            
+            if (isCorrect) {
+                document.getElementById('status-panel').innerText = "🐶 汪汪！趕羊中..."; playSound('bark');
+                if (isCampaignMode) campaignCorrect++;
+
+                if (currentMissionType === 'missing') {
+                    dogMesh.position.set(0, 0, 24); dogMesh.userData = { tx: 0, tz: 5.5, isMoving: true, speed: 0.1 };
+                    for (let i = 0; i < chosenNum; i++) {
+                        let s = createSheep(); s.position.set((Math.random()-0.5)*6, 0, 14 + Math.random()*4); scene.add(s);
+                        setTimeout(() => playSound('baa'), i * 300);
+                        animatingSheep.push({ mesh: s, speed: 0.1, targetX: (Math.random()-0.5)*4, targetZ: (Math.random()-0.5)*4, onReach: function(obj, index) { sheepArray.push(obj.mesh); animatingSheep.splice(index, 1); checkAllReachedAndCloseGates(); } });
+                    }
+                } else if (currentMissionType === 'combine') {
+                    dogMesh.position.set(0, 0, 24); dogMesh.userData = { tx: 0, tz: 5.5, isMoving: true, speed: 0.1 };
+                    outsideSheep.forEach((s, i) => {
+                        setTimeout(() => playSound('baa'), i * 200);
+                        animatingSheep.push({ mesh: s, speed: 0.1, targetX: (Math.random()-0.5)*4, targetZ: (Math.random()-0.5)*4, onReach: function(obj, index) { sheepArray.push(obj.mesh); animatingSheep.splice(index, 1); checkAllReachedAndCloseGates(); } });
+                    });
+                    outsideSheep = [];
+                } else if (currentMissionType === 'overcrowded') {
+                    dogMesh.userData = { isMoving: false, isJumping: true }; 
+                    let kickedOut = 0;
+                    for(let i=0; i<chosenNum; i++) {
+                        if(sheepArray.length > 0) {
+                            let s = sheepArray.pop(); setTimeout(() => playSound('baa'), i * 200);
+                            animatingSheep.push({ mesh: s, speed: 0.12, targetX: s.position.x + (Math.random()>0.5?15:-15), targetZ: 20, onReach: function(obj, index) { 
+                                scene.remove(obj.mesh); animatingSheep.splice(index, 1); kickedOut++; 
+                                if(kickedOut === chosenNum) { 
+                                    dogMesh.userData.isJumping = false; 
+                                    closeGates(); 
+                                    setTimeout(() => finishLevel(true), 800); 
+                                } 
+                            } });
+                        }
+                    }
+                }
+            } else {
+                document.getElementById('status-panel').innerText = "😱 糟了！羊跑掉了！"; playSound('wrong'); DOM.container.classList.add('shake'); setTimeout(() => DOM.container.classList.remove('shake'), 500);
+                
+                fenceGroup.children.forEach(wall => wall.userData.isFalling = true);
+                
+                let allSheepToFlee = sheepArray.concat(outsideSheep);
+                allSheepToFlee.forEach((s, i) => {
+                    setTimeout(() => playSound('baa'), i * 150);
+                    let angle = Math.random() * Math.PI * 2;
+                    animatingSheep.push({ mesh: s, speed: 0.15, targetX: s.position.x + Math.cos(angle)*25, targetZ: s.position.z + Math.sin(angle)*25, onReach: function(obj, index) { scene.remove(obj.mesh); animatingSheep.splice(index, 1); } });
+                });
+                sheepArray = []; outsideSheep = [];
+                setTimeout(() => { finishLevel(false); animatingSheep.forEach(obj => scene.remove(obj.mesh)); animatingSheep = []; }, 1500);
+            }
+        }
+
+        function checkAllReachedAndCloseGates() {
+            if (animatingSheep.length === 0) { closeGates(); setTimeout(() => finishLevel(true), 800); }
+        }
+        function closeGates() {
+            if (window.gateLeft) { window.gateLeft.userData.targetRotY = 0; window.gateRight.userData.targetRotY = 0; }
+        }
+
+        function finishLevel(success) {
+            DOM.status.classList.add('hidden'); DOM.result.classList.remove('hidden'); DOM.result.classList.add('pop-in');
+            const title = document.getElementById('result-title'); const msg = document.getElementById('result-msg'); const emoji = document.getElementById('result-emoji'); const nextBtn = document.getElementById('next-btn');
+            if (isCampaignMode) campaignStep++;
+
+            if (success) {
+                playSound('success'); title.innerText = "好棒！答對了！"; title.style.color = "#059669"; emoji.innerText = "🌟";
+                if(currentMissionType === 'missing') msg.innerText = `${scenarioData.current} 隻再加 ${correctAnswer} 隻，就是 ${scenarioData.target} 隻囉！`;
+                else if(currentMissionType === 'combine') msg.innerText = `${scenarioData.left} 隻加 ${scenarioData.right} 隻，總共 ${correctAnswer} 隻進去了！`;
+                else if(currentMissionType === 'overcrowded') msg.innerText = `趕走多出來的 ${correctAnswer} 隻，剩下 ${scenarioData.limit} 隻剛剛好！`;
+                if (!isTutorialMode && !isCampaignMode) { score += 10 * (1 + streak); streak++; timeLeft = Math.min(timeLeft + 5, 50); updateHUD(); }
+            } else {
+                title.innerText = "哎呀！算錯囉！"; title.style.color = "#dc2626"; emoji.innerText = "💦"; msg.innerText = `答案應該是 ${correctAnswer} 才對喔！`;
+                if (!isTutorialMode && !isCampaignMode) { streak = 0; timeLeft = Math.max(1, timeLeft - 5); updateHUD(); }
+            }
+
+            if (isTutorialMode) {
+                if (success) tutorialStep++;
+                if (tutorialStep >= TUTORIAL_LEVELS.length) { nextBtn.innerText = "完成練習！回主畫面"; tutorialCompleted = true; } else { nextBtn.innerText = success ? "下一題" : "再試一次"; }
+            } else if (isCampaignMode) { nextBtn.innerText = campaignStep >= CAMPAIGN_LEVELS.length ? "看結業成績！" : `進入第 ${campaignStep+1} 關`; } 
+            else { nextBtn.innerText = "繼續挑戰"; }
+        }
+
+        function handleNextBtn() {
+            if (tutorialCompleted) { returnToStartMenu(); } else if (isCampaignMode && campaignStep >= CAMPAIGN_LEVELS.length) { showCampaignComplete(); } else { startNextRound(); }
+        }
+
+        function showCampaignComplete() {
+            DOM.result.classList.add('hidden'); DOM.campaignComplete.classList.remove('hidden'); DOM.campaignComplete.classList.add('pop-in');
+            document.getElementById('campaign-correct-count').textContent = `${campaignCorrect}/15`;
+            document.getElementById('view-lb-btn').innerText = "看排行榜";
+            document.getElementById('campaign-restart-btn').style.display = 'inline-block';
+            sendDataToSheet(campaignCorrect); // 【新增】上傳紀錄
+        }
+    </script>
+</body>
+</html>

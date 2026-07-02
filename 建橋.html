@@ -1,0 +1,1098 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>3D 起橋挑戰</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cannon.js/0.6.2/cannon.min.js"></script>
+    <style>
+        * { -webkit-tap-highlight-color: transparent; touch-action: manipulation; box-sizing: border-box; }
+        body { margin: 0; overflow: hidden; background-color: #87CEEB; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        #canvas-container { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; }
+        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; pointer-events: none; }
+        .panel { background: #ffffff; border-radius: 20px; box-shadow: 0 8px 32px rgba(0,0,0,0.18); pointer-events: auto; }
+        .shake { animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both; }
+        @keyframes shake {
+            10%, 90% { transform: translate3d(-2px, 2px, 0); }
+            20%, 80% { transform: translate3d(4px, -4px, 0); }
+            30%, 50%, 70% { transform: translate3d(-8px, 6px, 0); }
+            40%, 60% { transform: translate3d(8px, -6px, 0); }
+        }
+        .numpad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 8px; }
+        .numpad-btn {
+            background: #1e40af; color: #fff; font-size: 1.25rem; font-weight: 800;
+            border: none; border-radius: 10px; padding: 13px 0; cursor: pointer;
+            transition: background 0.1s, transform 0.1s;
+            user-select: none; -webkit-user-select: none;
+        }
+        .numpad-btn:active { background: #1e3a8a; transform: scale(0.93); }
+        .numpad-btn.del { background: #6b7280; }
+        .numpad-btn.del:active { background: #4b5563; }
+        .numpad-btn.go { background: #16a34a; grid-column: span 2; }
+        .numpad-btn.go:active { background: #15803d; }
+        .lb-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+        .lb-table th { background: #e5e7eb; padding: 5px 8px; text-align: left; font-weight: 700; }
+        .lb-table td { padding: 5px 8px; border-bottom: 1px solid #f3f4f6; }
+        .lb-table tr:nth-child(even) td { background: #f9fafb; }
+        .lb-table tr.me td { background: #dbeafe; font-weight: 700; }
+        @media (max-width: 640px) {
+            #question-panel {
+                position: fixed !important; bottom: 0 !important; top: auto !important;
+                right: 0 !important; left: 0 !important; width: 100% !important;
+                border-radius: 20px 20px 0 0 !important; max-height: 75vh; overflow-y: auto;
+            }
+            #hud { padding: 6px !important; }
+        }
+        input[type=number]::-webkit-inner-spin-button,
+        input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; }
+        input[type=number] { -moz-appearance: textfield; }
+        .modal-overlay {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 100;
+            display: flex; align-items: center; justify-content: center; padding: 16px;
+        }
+        .modal-box { background: #fff; border-radius: 20px; padding: 28px; max-width: 360px; width: 100%; box-shadow: 0 12px 48px rgba(0,0,0,0.25); }
+        .btn-primary { width: 100%; background: #4f46e5; color: #fff; font-weight: 700; border: none; border-radius: 12px; padding: 14px; font-size: 1.05rem; cursor: pointer; margin-top: 14px; }
+        .btn-primary:active { background: #3730a3; }
+        .btn-secondary { width: 100%; background: #f3f4f6; color: #374151; font-weight: 600; border: none; border-radius: 12px; padding: 12px; font-size: 0.95rem; cursor: pointer; margin-top: 8px; }
+        .btn-secondary:active { background: #e5e7eb; }
+    </style>
+</head>
+<body>
+
+    <div id="canvas-container"></div>
+
+    <div id="lb-modal" class="modal-overlay" style="display:none;">
+        <div class="modal-box" style="max-width:420px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+                <h2 style="font-size:1.15rem;font-weight:900;color:#1f2937;">🏆 雲端排行榜</h2>
+                <button id="lb-close-btn" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:#6b7280;line-height:1;">✕</button>
+            </div>
+            <div style="display:flex;gap:8px;margin-bottom:12px;">
+                <button id="lb-tab-campaign" style="flex:1;padding:8px;border-radius:10px;font-weight:700;font-size:0.85rem;border:none;cursor:pointer;background:#4f46e5;color:#fff;">📋 關卡模式</button>
+                <button id="lb-tab-endless" style="flex:1;padding:8px;border-radius:10px;font-weight:700;font-size:0.85rem;border:none;cursor:pointer;background:#e5e7eb;color:#374151;">🚀 無盡模式</button>
+            </div>
+            <div id="lb-content" style="max-height:340px;overflow-y:auto;">
+                <p style="color:#9ca3af;font-size:0.85rem;text-align:center;padding:24px 0;">載入中...</p>
+            </div>
+            <button class="btn-secondary" id="lb-back-btn" style="margin-top:12px;">返回主畫面</button>
+        </div>
+    </div>
+
+    <div id="hud" class="absolute top-0 left-0 w-full p-3 flex justify-between items-start z-20 pointer-events-none hidden">
+        <button id="back-home-btn" onclick="confirmReturnHome()" style="pointer-events:auto;background:#1f2937;color:#fff;border:none;border-radius:10px;padding:8px 12px;font-size:0.82rem;font-weight:700;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.3);display:flex;align-items:center;gap:5px;">
+            ← 返回
+        </button>
+        <div id="hud-stats" style="background:#1f2937;color:#fff;padding:8px 14px;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,0.3);">
+            <div style="font-size:0.7rem;color:#9ca3af;">Level <span id="hud-level" style="color:#fff;font-weight:700;font-size:0.95rem;">1</span></div>
+            <div style="font-size:1.1rem;font-weight:900;color:#fbbf24;">分數: <span id="hud-score">0</span></div>
+            <div style="font-size:0.7rem;font-weight:700;color:#4ade80;">連勝: <span id="hud-streak">0</span> 🔥</div>
+        </div>
+        <div id="hud-time-wrap" style="background:#1f2937;color:#fff;padding:8px 14px;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,0.3);text-align:center;">
+            <div id="hud-time-label" style="font-size:0.7rem;color:#9ca3af;">剩餘時間</div>
+            <div id="hud-time" style="font-size:1.4rem;font-weight:900;color:#fff;">50s</div>
+        </div>
+        <div id="hud-campaign" style="display:none;background:#4338ca;color:#fff;padding:8px 14px;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,0.3);text-align:center;">
+            <div style="font-size:0.7rem;color:#c7d2fe;">關卡模式</div>
+            <div style="font-size:1rem;font-weight:900;color:#fde68a;">第 <span id="hud-campaign-level">1</span>/20 關</div>
+            <div style="font-size:0.72rem;color:#c7d2fe;">⏱ <span id="hud-campaign-timer">0</span>s</div>
+        </div>
+    </div>
+
+    <div id="return-confirm-modal" class="modal-overlay" style="display:none;">
+        <div class="modal-box" style="max-width:300px;text-align:center;">
+            <div style="font-size:2rem;margin-bottom:8px;">🏠</div>
+            <h3 style="font-size:1.1rem;font-weight:900;color:#1f2937;margin-bottom:6px;">返回主頁？</h3>
+            <p style="color:#6b7280;font-size:0.85rem;margin-bottom:18px;">目前進度將不會儲存。</p>
+            <button id="confirm-return-yes" class="btn-primary" style="margin-top:0;">確認返回</button>
+            <button id="confirm-return-no" class="btn-secondary">繼續遊戲</button>
+        </div>
+    </div>
+
+    <div id="ui-layer" class="flex items-center justify-center">
+
+        <div id="start-panel" class="panel" style="padding:28px;max-width:340px;width:calc(100% - 32px);margin:16px;text-align:center;">
+            <h1 style="font-size:1.7rem;font-weight:900;color:#1f2937;margin-bottom:4px;">🌉 3D 起橋挑戰</h1>
+            <p style="color:#6b7280;font-size:0.85rem;margin-bottom:20px;">計算間隔與車寬，搭建完美橋樑！</p>
+            <div style="display:flex;flex-direction:column;gap:10px;">
+                <button id="campaign-btn" style="background:#4f46e5;color:#fff;font-weight:700;font-size:1.05rem;padding:14px;border:none;border-radius:14px;cursor:pointer;">📋 關卡模式 (20關)</button>
+                <button id="init-btn" style="background:#2563eb;color:#fff;font-weight:700;font-size:1.05rem;padding:14px;border:none;border-radius:14px;cursor:pointer;">🚀 無盡模式</button>
+                <button id="tutorial-btn" style="background:#16a34a;color:#fff;font-weight:700;font-size:0.95rem;padding:12px;border:none;border-radius:14px;cursor:pointer;">🎓 教學模式</button>
+                <button id="leaderboard-btn" style="background:#f3f4f6;color:#374151;font-weight:700;font-size:0.9rem;padding:11px;border:none;border-radius:14px;cursor:pointer;">🏆 雲端排行榜</button>
+            </div>
+            <p style="font-size:0.72rem;color:#9ca3af;margin-top:14px;">新手建議先玩教學模式</p>
+        </div>
+
+        <div id="question-panel" class="panel hidden absolute top-28 right-3" style="padding:16px;width:280px;">
+            <div id="tutorial-badge" class="hidden" style="background:#16a34a;color:#fff;text-align:center;font-weight:700;padding:6px;font-size:0.85rem;border-radius:12px 12px 0 0;margin:-16px -16px 12px -16px;">教學進度 1/5</div>
+            <div id="campaign-badge" class="hidden" style="background:#4f46e5;color:#fff;text-align:center;font-weight:700;padding:6px;font-size:0.85rem;border-radius:12px 12px 0 0;margin:-16px -16px 12px -16px;">第 1 關 / 20</div>
+            <h3 style="font-size:0.95rem;font-weight:900;color:#1f2937;border-bottom:1px solid #e5e7eb;padding-bottom:8px;margin-bottom:8px;">🌉 任務指示</h3>
+            <p id="mission-instruction" style="font-size:0.78rem;color:#374151;margin-bottom:10px;line-height:1.55;"></p>
+            <div id="display-input" style="background:#eff6ff;border:2px solid #3b82f6;border-radius:12px;padding:8px;text-align:center;font-size:1.6rem;font-weight:900;color:#1e40af;min-height:42px;">—</div>
+            <p id="error-msg" style="color:#ef4444;font-size:0.75rem;text-align:center;font-weight:700;margin:4px 0;display:none;">⚠️ 請輸入 1 至 100 之間的數字！</p>
+            <div class="numpad">
+                <button class="numpad-btn" data-val="1">1</button>
+                <button class="numpad-btn" data-val="2">2</button>
+                <button class="numpad-btn" data-val="3">3</button>
+                <button class="numpad-btn" data-val="4">4</button>
+                <button class="numpad-btn" data-val="5">5</button>
+                <button class="numpad-btn" data-val="6">6</button>
+                <button class="numpad-btn" data-val="7">7</button>
+                <button class="numpad-btn" data-val="8">8</button>
+                <button class="numpad-btn" data-val="9">9</button>
+                <button class="numpad-btn del" data-val="del">⌫</button>
+                <button class="numpad-btn" data-val="0">0</button>
+                <button class="numpad-btn go" data-val="go">🔨 建橋</button>
+            </div>
+        </div>
+
+        <div id="status-panel" class="hidden absolute top-28 left-1/2 -translate-x-1/2 pointer-events-auto" style="background:#1f2937;color:#fff;padding:8px 20px;border-radius:999px;font-weight:700;font-size:0.9rem;box-shadow:0 4px 16px rgba(0,0,0,0.25);">
+            正在搭建... <span id="block-count" style="color:#60a5fa;">0</span>
+        </div>
+
+        <div id="result-panel" class="panel hidden" style="padding:24px;max-width:300px;width:calc(100% - 32px);margin:16px;text-align:center;">
+            <h2 id="result-title" style="font-size:1.6rem;font-weight:900;margin-bottom:4px;"></h2>
+            <p id="result-score-change" style="font-size:1rem;font-weight:700;margin-bottom:10px;"></p>
+            <p id="result-msg" style="color:#4b5563;margin-bottom:14px;font-size:0.85rem;background:#f9fafb;padding:10px 12px;border-radius:10px;border:1px solid #e5e7eb;"></p>
+            <button id="next-btn" style="background:#1f2937;color:#fff;font-weight:700;border:none;border-radius:12px;padding:14px;width:100%;font-size:0.95rem;cursor:pointer;">繼續</button>
+        </div>
+
+        <div id="gameover-panel" class="panel hidden" style="padding:32px;max-width:300px;width:calc(100% - 32px);margin:16px;text-align:center;border:2px solid #ef4444;">
+            <h2 style="font-size:2rem;font-weight:900;color:#ef4444;margin-bottom:10px;">時間到！</h2>
+            <p style="color:#6b7280;font-size:0.85rem;margin-bottom:4px;">最終得分</p>
+            <p id="final-score" style="font-size:2.5rem;font-weight:900;color:#f59e0b;margin-bottom:12px;">0</p>
+            <p style="color:#6b7280;font-size:0.82rem;margin-bottom:2px;">⏱ 總遊玩時間</p>
+            <p id="final-time-endless" style="font-size:1.4rem;font-weight:900;color:#4f46e5;margin-bottom:20px;">—</p>
+            <button id="restart-game-btn" style="background:linear-gradient(90deg,#dc2626,#ea580c);color:#fff;font-weight:700;border:none;border-radius:12px;padding:14px;width:100%;font-size:0.95rem;cursor:pointer;">返回主畫面</button>
+        </div>
+
+        <div id="campaign-complete-panel" class="panel hidden" style="padding:28px;max-width:300px;width:calc(100% - 32px);margin:16px;text-align:center;border:2px solid #f59e0b;">
+            <div style="font-size:2.5rem;margin-bottom:6px;">🏆</div>
+            <h2 style="font-size:1.4rem;font-weight:900;color:#b45309;margin-bottom:4px;">全部通關！</h2>
+            <p style="color:#6b7280;font-size:0.82rem;margin-bottom:4px;">正確關數</p>
+            <p id="campaign-correct-count" style="font-size:2rem;font-weight:900;color:#16a34a;margin-bottom:4px;">20/20</p>
+            <p style="color:#6b7280;font-size:0.82rem;margin-bottom:4px;">答題總時間</p>
+            <p id="campaign-total-time" style="font-size:1.8rem;font-weight:900;color:#4f46e5;margin-bottom:18px;">0s</p>
+            <button id="view-lb-btn" style="background:#4f46e5;color:#fff;font-weight:700;border:none;border-radius:12px;padding:13px;width:100%;font-size:0.95rem;cursor:pointer;margin-bottom:8px;">🏆 查看排行榜</button>
+            <button id="campaign-restart-btn" style="background:#f3f4f6;color:#374151;font-weight:600;border:none;border-radius:12px;padding:12px;width:100%;font-size:0.9rem;cursor:pointer;">返回主畫面</button>
+        </div>
+    </div>
+    <script>
+        // 【新增】接收主網頁傳來的學生資料
+        const urlParams = new URLSearchParams(window.location.search);
+        const studentClass = urlParams.get('class') || '未設定班別';
+        const studentId = urlParams.get('id') || '未設定學號';
+
+        const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwHKY-YDXziCb0eCZtW-GQ9MGUQshKIIJk1qJgX7TPqTL1YwThCrvCld5YNSH9CSwpPew/exec"; 
+
+        // 【更新】重新實作符合主網頁規範的存檔函數
+        async function saveResultToCloud(payload) {
+            try {
+                const data = {
+                    gameName: payload.mode === 'campaign' ? '建橋(關卡)' : '建橋(無盡)',
+                    studentClass: studentClass,
+                    studentId: studentId,
+                    playDate: new Date().toLocaleDateString('zh-HK'),
+                    playTime: payload.time + "秒",
+                    score: payload.mode === 'campaign' ? payload.correctCount : payload.score
+                };
+                await fetch(GAS_WEB_APP_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify(data)
+                });
+                return true;
+            } catch(err) {
+                console.error("上傳成績至雲端失敗:", err);
+                return false;
+            }
+        }
+
+        let scene, camera, renderer, controls, world;
+        let builtBlocks = [], particles = [];
+        let leftLandMesh, rightLandMesh, leftLandBody, rightLandBody;
+        let landGrids = [];
+        let carGroup, carBody, wheels = [];
+        let animationId, buildingInterval, timerInterval;
+        let isShaking = false;
+
+        let score = 0, timeLeft = 50, level = 1, streak = 0;
+        let gapLength = 0, vehicleWidth = 0;
+        let gridStartX = 0, gridEndX = 0, gridStartZ = 0;
+        let correctCount = 0, targetBuildCount = 0;
+        let isBuilding = false, isDriving = false, isSuccess = false, isResultShowing = false;
+        let isGameOver = false;
+
+        let missionType = 'normal';
+        let islandBlocks = [], islandCoordinates = [], missingCells = [], fleetWidths = [];
+        let isTutorialMode = false, tutorialStep = 0, tutorialCompleted = false;
+        const tutorialSequence = ['normal', 'island', 'heavy', 'repair', 'fleet'];
+
+        let isCampaignMode = false, campaignStep = 0, campaignCorrect = 0;
+        let campaignStartTime = 0, campaignElapsed = 0, campaignTimerInterval = null;
+        let endlessStartTime = 0;
+        
+        let playerClass = '', playerNumber = ''; 
+        let campaignAnswers = []; 
+        
+        let numpadValue = '';
+        let audioCtx;
+
+        const CAMPAIGN_LEVELS = [
+            { type:'normal', gap:3, vWidth:1 }, { type:'normal', gap:4, vWidth:1 },
+            { type:'normal', gap:3, vWidth:2 }, { type:'normal', gap:4, vWidth:2 }, { type:'normal', gap:5, vWidth:2 },
+            { type:'island', gap:4, vWidth:2, islandCount:1 }, { type:'island', gap:4, vWidth:2, islandCount:2 },
+            { type:'island', gap:5, vWidth:2, islandCount:2 }, { type:'island', gap:5, vWidth:3, islandCount:3 },
+            { type:'repair', gap:4, vWidth:2, missingCount:3 }, { type:'repair', gap:5, vWidth:2, missingCount:4 }, { type:'repair', gap:5, vWidth:3, missingCount:5 },
+            { type:'heavy', gap:3, vWidth:2 }, { type:'heavy', gap:4, vWidth:2 }, { type:'heavy', gap:5, vWidth:2 },
+            { type:'fleet', gap:4, fleetW:[1,1] }, { type:'fleet', gap:4, fleetW:[2,1] },
+            { type:'heavy', gap:4, vWidth:3 }, { type:'island', gap:6, vWidth:3, islandCount:4 }, { type:'repair', gap:6, vWidth:3, missingCount:8 },
+        ];
+
+        const DOM = {
+            start: document.getElementById('start-panel'),
+            hud: document.getElementById('hud'),
+            question: document.getElementById('question-panel'),
+            status: document.getElementById('status-panel'),
+            result: document.getElementById('result-panel'),
+            gameover: document.getElementById('gameover-panel'),
+            campaignComplete: document.getElementById('campaign-complete-panel'),
+            container: document.getElementById('canvas-container')
+        };
+
+        async function fetchLeaderboardFromCloud(mode) {
+            if (!GAS_WEB_APP_URL || GAS_WEB_APP_URL.includes("請在此貼上")) return [];
+            try {
+                const response = await fetch(`${GAS_WEB_APP_URL}?mode=${mode}`);
+                return await response.json();
+            } catch (err) {
+                console.error("雲端排行榜讀取失敗:", err);
+                return [];
+            }
+        }
+
+        async function renderLeaderboard(mode) {
+            const el = document.getElementById('lb-content');
+            el.innerHTML = '<p style="color:#9ca3af;font-size:0.85rem;text-align:center;padding:24px 0;">⏳ 雲端資料載入中...</p>';
+            const entries = await fetchLeaderboardFromCloud(mode);
+            if (entries.length === 0) {
+                el.innerHTML = '<p style="color:#9ca3af;font-size:0.85rem;text-align:center;padding:24px 0;">暫無紀錄或連線失敗</p>';
+                return;
+            }
+            let rows = entries.map((e, i) => {
+                const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i+1}.`;
+                const right = mode === 'campaign'
+                    ? `${e.correct}/20 題 | ⏱ ${e.time}s`
+                    : `${e.score} 分 | ⏱ ${e.time}s`;
+                return `<tr><td>${medal}</td><td>${e.cls} ${e.num}</td><td>${right}</td></tr>`;
+            }).join('');
+            el.innerHTML = `<table class="lb-table"><thead><tr><th>#</th><th>學生</th><th>${mode === 'campaign' ? '成績' : '分數'}</th></tr></thead><tbody>${rows}</tbody></table>`;
+        }
+
+        window.onload = function () {
+            document.getElementById('campaign-btn').addEventListener('click', () => initGame('campaign'));
+            document.getElementById('init-btn').addEventListener('click', () => initGame('endless'));
+            document.getElementById('tutorial-btn').addEventListener('click', () => initGame('tutorial'));
+            document.getElementById('leaderboard-btn').addEventListener('click', () => showLeaderboard('campaign'));
+
+            document.getElementById('lb-close-btn').addEventListener('click', () => { document.getElementById('lb-modal').style.display = 'none'; });
+            document.getElementById('lb-back-btn').addEventListener('click', () => { document.getElementById('lb-modal').style.display = 'none'; });
+            document.getElementById('lb-tab-campaign').addEventListener('click', () => { setLbTab('campaign'); });
+            document.getElementById('lb-tab-endless').addEventListener('click', () => { setLbTab('endless'); });
+
+            document.getElementById('next-btn').addEventListener('click', handleNextBtn);
+            document.getElementById('restart-game-btn').addEventListener('click', returnToStartMenu);
+            document.getElementById('campaign-restart-btn').addEventListener('click', returnToStartMenu);
+            document.getElementById('view-lb-btn').addEventListener('click', () => showLeaderboard('campaign'));
+
+            document.querySelectorAll('.numpad-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const v = this.dataset.val;
+                    if (v === 'del') numpadValue = numpadValue.slice(0, -1);
+                    else if (v === 'go') { onBuildStart(); return; }
+                    else if (numpadValue.length < 3) numpadValue += v;
+                    updateDisplayInput();
+                });
+            });
+
+            document.addEventListener('keydown', function(e) {
+                const qp = document.getElementById('question-panel');
+                const rp = document.getElementById('result-panel');
+
+                if (!qp.classList.contains('hidden')) {
+                    if (e.key >= '0' && e.key <= '9') { if (numpadValue.length < 3) { numpadValue += e.key; updateDisplayInput(); } } 
+                    else if (e.key === 'Backspace') { numpadValue = numpadValue.slice(0, -1); updateDisplayInput(); } 
+                    else if (e.key === 'Enter') onBuildStart();
+                } else if (!rp.classList.contains('hidden') && e.key === 'Enter') {
+                    handleNextBtn();
+                }
+            });
+
+            document.getElementById('confirm-return-yes').addEventListener('click', () => {
+                document.getElementById('return-confirm-modal').style.display = 'none';
+                returnToStartMenu();
+            });
+            document.getElementById('confirm-return-no').addEventListener('click', () => { document.getElementById('return-confirm-modal').style.display = 'none'; });
+
+            init3D(); initPhysics(); animate();
+        };
+
+        let lbCurrentTab = 'campaign';
+        function showLeaderboard(tab) {
+            lbCurrentTab = tab; setLbTab(tab); document.getElementById('lb-modal').style.display = 'flex';
+        }
+        function setLbTab(tab) {
+            lbCurrentTab = tab;
+            document.getElementById('lb-tab-campaign').style.background = tab === 'campaign' ? '#4f46e5' : '#e5e7eb';
+            document.getElementById('lb-tab-campaign').style.color = tab === 'campaign' ? '#fff' : '#374151';
+            document.getElementById('lb-tab-endless').style.background = tab === 'endless' ? '#4f46e5' : '#e5e7eb';
+            document.getElementById('lb-tab-endless').style.color = tab === 'endless' ? '#fff' : '#374151';
+            renderLeaderboard(tab);
+        }
+
+        function updateDisplayInput() {
+            const el = document.getElementById('display-input');
+            el.textContent = numpadValue === '' ? '—' : numpadValue;
+        }
+
+        function confirmReturnHome() { document.getElementById('return-confirm-modal').style.display = 'flex'; }
+
+        function initAudio() {
+            if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if(audioCtx.state === 'suspended') audioCtx.resume();
+        }
+
+        function playSound(type) {
+            if(!audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            const now = audioCtx.currentTime;
+            
+            if (type === 'pop') {
+                osc.type = 'sine'; osc.frequency.setValueAtTime(500 + Math.random()*300, now);
+                osc.frequency.exponentialRampToValueAtTime(1000, now + 0.1);
+                gain.gain.setValueAtTime(0.1, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+                osc.start(now); osc.stop(now + 0.1);
+            } else if (type === 'success') {
+                osc.type = 'triangle'; osc.frequency.setValueAtTime(440, now);
+                osc.frequency.setValueAtTime(554, now + 0.1); osc.frequency.setValueAtTime(659, now + 0.2);
+                osc.frequency.setValueAtTime(880, now + 0.4); gain.gain.setValueAtTime(0.2, now);
+                gain.gain.linearRampToValueAtTime(0, now + 1.0); osc.start(now); osc.stop(now + 1.0);
+            } else if (type === 'explosion') {
+                osc.type = 'sawtooth'; osc.frequency.setValueAtTime(150, now);
+                osc.frequency.exponentialRampToValueAtTime(10, now + 0.5); gain.gain.setValueAtTime(0.4, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.5); osc.start(now); osc.stop(now + 0.5);
+            } else if (type === 'engine') {
+                osc.type = 'square'; osc.frequency.setValueAtTime(80, now);
+                osc.frequency.linearRampToValueAtTime(120, now + 1.5); gain.gain.setValueAtTime(0.05, now);
+                gain.gain.linearRampToValueAtTime(0.01, now + 1.5); osc.start(now); osc.stop(now + 1.5);
+            }
+        }
+
+        function init3D() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x60a5fa);
+            scene.fog = new THREE.Fog(0x60a5fa, 30, 100);
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 24, 25);
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            DOM.container.appendChild(renderer.domElement);
+
+            if (typeof THREE.OrbitControls === 'function') {
+                controls = new THREE.OrbitControls(camera, renderer.domElement);
+                controls.enableDamping = true; controls.dampingFactor = 0.05;
+                controls.maxPolarAngle = Math.PI / 2 - 0.1;
+            }
+
+            scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+            const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            dirLight.position.set(10, 30, 20); dirLight.castShadow = true;
+            dirLight.shadow.camera.left = -20; dirLight.shadow.camera.right = 20;
+            dirLight.shadow.camera.top = 20; dirLight.shadow.camera.bottom = -20;
+            dirLight.shadow.mapSize.width = 1024; dirLight.shadow.mapSize.height = 1024;
+            scene.add(dirLight);
+
+            const water = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), new THREE.MeshLambertMaterial({ color: 0x1e40af, transparent: true, opacity: 0.8 }));
+            water.rotation.x = -Math.PI / 2; water.position.y = -1; scene.add(water);
+
+            const gridHelper = new THREE.GridHelper(100, 100, 0xffffff, 0xffffff);
+            gridHelper.position.y = -0.99; gridHelper.material.opacity = 0.3; gridHelper.material.transparent = true;
+            scene.add(gridHelper);
+
+            window.addEventListener('resize', onWindowResize, false);
+        }
+
+        function initPhysics() {
+            world = new CANNON.World();
+            world.gravity.set(0, -20, 0); world.broadphase = new CANNON.NaiveBroadphase();
+            world.addContactMaterial(new CANNON.ContactMaterial(new CANNON.Material(), new CANNON.Material(), { friction: 0.5, restitution: 0.1 }));
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            if (world && !isGameOver) world.step(1 / 60);
+
+            builtBlocks.forEach(b => {
+                if(b.isAnimating) {
+                    b.mesh.position.y += (b.targetY - b.mesh.position.y) * 0.3;
+                    if(Math.abs(b.mesh.position.y - b.targetY) < 0.05) { b.mesh.position.y = b.targetY; b.isAnimating = false; }
+                } else if (b.body && b.body.type === CANNON.Body.DYNAMIC) {
+                    b.mesh.position.copy(b.body.position); b.mesh.quaternion.copy(b.body.quaternion);
+                }
+            });
+
+            if (carGroup && carGroup.userData && carGroup.userData.isFreeFalling) {
+                carGroup.userData.velocityY -= 0.015;
+                carGroup.position.y += carGroup.userData.velocityY;
+                carGroup.position.x += 0.05; carGroup.rotation.z -= 0.02;
+            } else if (isDriving && carGroup) {
+                if (carBody && carBody.type === CANNON.Body.KINEMATIC) {
+                    carBody.position.x += 0.08; carGroup.position.copy(carBody.position);
+                    wheels.forEach(w => w.rotation.z -= 0.2);
+                    if (carBody.position.x > gridStartX + 0.5 && !isSuccess) triggerCollapse();
+                    if (carBody.position.x > gridEndX && isSuccess) { isDriving = false; finishLevel(true); }
+                }
+            }
+
+            for(let i = particles.length - 1; i >= 0; i--) {
+                let p = particles[i];
+                p.position.add(p.velocity); p.velocity.y -= 0.01;
+                p.rotation.x += 0.1; p.rotation.y += 0.1; p.life--;
+                if(p.life <= 0) { scene.remove(p); particles.splice(i, 1); }
+            }
+
+            if (isShaking) { camera.position.x += (Math.random() - 0.5) * 0.5; camera.position.y += (Math.random() - 0.5) * 0.5; }
+
+            if (controls) controls.update();
+            renderer.render(scene, camera);
+        }
+
+        function initGame(mode) {
+            initAudio();
+            isTutorialMode = (mode === 'tutorial');
+            isCampaignMode = (mode === 'campaign');
+            tutorialStep = 0; tutorialCompleted = false;
+            campaignStep = 0; campaignCorrect = 0;
+            campaignElapsed = 0; campaignAnswers = [];
+            if (campaignTimerInterval) clearInterval(campaignTimerInterval);
+
+            DOM.start.classList.add('hidden'); DOM.hud.classList.remove('hidden');
+
+            const hudStats = document.getElementById('hud-stats');
+            const hudTimeWrap = document.getElementById('hud-time-wrap');
+            const hudCampaign = document.getElementById('hud-campaign');
+
+            if (isTutorialMode) {
+                hudStats.style.display = 'none'; hudTimeWrap.style.display = 'none'; hudCampaign.style.display = 'none';
+            } else if (isCampaignMode) {
+                hudStats.style.display = 'none'; hudTimeWrap.style.display = 'none'; hudCampaign.style.display = 'block';
+                document.getElementById('hud-campaign-timer').textContent = '0';
+                campaignStartTime = Date.now();
+                campaignTimerInterval = setInterval(() => {
+                    if (!isBuilding && !isDriving && !isResultShowing) {
+                        campaignElapsed = Math.floor((Date.now() - campaignStartTime) / 1000);
+                        document.getElementById('hud-campaign-timer').textContent = campaignElapsed;
+                    }
+                }, 500);
+            } else {
+                hudStats.style.display = 'block'; hudTimeWrap.style.display = 'block'; hudCampaign.style.display = 'none';
+                document.getElementById('hud-time-label').innerText = "剩餘時間"; endlessStartTime = Date.now();
+            }
+            resetFullGame();
+        }
+
+        function returnToStartMenu() {
+            clearLevel();
+            if(timerInterval) clearInterval(timerInterval);
+            if(campaignTimerInterval) { clearInterval(campaignTimerInterval); campaignTimerInterval = null; }
+            DOM.hud.classList.add('hidden'); DOM.question.classList.add('hidden');
+            DOM.result.classList.add('hidden'); DOM.gameover.classList.add('hidden');
+            if (DOM.campaignComplete) DOM.campaignComplete.classList.add('hidden');
+            DOM.start.classList.remove('hidden');
+        }
+
+        function resetFullGame() {
+            score = 0; timeLeft = 50; level = 1; streak = 0;
+            isGameOver = false; isResultShowing = false;
+            if (!isTutorialMode && !isCampaignMode) updateHUD();
+            DOM.gameover.classList.add('hidden');
+            if (DOM.campaignComplete) DOM.campaignComplete.classList.add('hidden');
+
+            if(timerInterval) clearInterval(timerInterval);
+            if (!isTutorialMode && !isCampaignMode) {
+                timerInterval = setInterval(() => {
+                    if(isGameOver || isBuilding || isDriving || isResultShowing) return;
+                    timeLeft--; updateHUD();
+                    if(timeLeft <= 0) triggerGameOver();
+                }, 1000);
+            }
+            startNextRound();
+        }
+
+        function updateHUD() {
+            if (isTutorialMode) return;
+            document.getElementById('hud-score').innerText = score; document.getElementById('hud-level').innerText = level;
+            document.getElementById('hud-streak').innerText = streak; document.getElementById('hud-time').innerText = timeLeft + 's';
+            if(timeLeft <= 10) document.getElementById('hud-time').className = "text-3xl font-black text-red-500 animate-pulse";
+            else document.getElementById('hud-time').className = "text-3xl font-black text-white";
+        }
+
+        function triggerGameOver() {
+            isGameOver = true; clearInterval(timerInterval);
+            DOM.question.classList.add('hidden'); DOM.result.classList.add('hidden'); DOM.gameover.classList.remove('hidden');
+            document.getElementById('final-score').innerText = score;
+            const totalTime = Math.floor((Date.now() - endlessStartTime) / 1000);
+            document.getElementById('final-time-endless').textContent = `${totalTime}s`;
+            
+            const restartBtn = document.getElementById('restart-game-btn');
+            restartBtn.innerText = "⏳ 雲端儲存中...";
+            restartBtn.disabled = true;
+            const payload = { mode: 'endless', score: score, time: totalTime };
+            saveResultToCloud(payload).then(success => {
+                restartBtn.innerText = "返回主畫面"; restartBtn.disabled = false;
+            });
+        }
+
+        function clearLevel() {
+            builtBlocks.forEach(b => { scene.remove(b.mesh); if (b.body) world.removeBody(b.body); }); builtBlocks = [];
+            islandBlocks.forEach(b => { scene.remove(b.mesh); if (b.body) world.removeBody(b.body); }); islandBlocks = [];
+            islandCoordinates = []; missingCells = []; fleetWidths = [];
+
+            if(leftLandMesh) { scene.remove(leftLandMesh); world.removeBody(leftLandBody); }
+            if(rightLandMesh) { scene.remove(rightLandMesh); world.removeBody(rightLandBody); }
+            landGrids.forEach(g => scene.remove(g)); landGrids = [];
+            
+            if(carGroup) { scene.remove(carGroup); if(carBody && world.bodies.includes(carBody)) world.removeBody(carBody); carGroup = null; wheels = []; }
+            if (buildingInterval) clearInterval(buildingInterval);
+        }
+
+        function handleNextBtn() {
+            if (tutorialCompleted) { returnToStartMenu(); } 
+            else if (isCampaignMode && campaignStep >= CAMPAIGN_LEVELS.length) {
+                if (campaignTimerInterval) { clearInterval(campaignTimerInterval); campaignTimerInterval = null; }
+                const totalTime = Math.floor((Date.now() - campaignStartTime) / 1000);
+                DOM.result.classList.add('hidden');
+                DOM.campaignComplete.classList.remove('hidden');
+                document.getElementById('campaign-correct-count').textContent = `${campaignCorrect}/20`;
+                document.getElementById('campaign-total-time').textContent = `${totalTime}s`;
+                
+                const btn = document.getElementById('view-lb-btn');
+                const restartBtn = document.getElementById('campaign-restart-btn');
+                
+                btn.innerText = "⏳ 雲端儲存中..."; btn.disabled = true; restartBtn.style.display = 'none'; 
+                const payload = { mode: 'campaign', correctCount: campaignCorrect, time: totalTime };
+                saveResultToCloud(payload).then(success => {
+                    if(success) { btn.innerText = "🏆 查看排行榜"; } else { btn.innerText = "❌ 儲存失敗 (無法連接)"; }
+                    btn.disabled = false; restartBtn.style.display = 'block'; 
+                });
+            } else { startNextRound(); }
+        }
+
+        function startNextRound() {
+            clearLevel(); numpadValue = ''; updateDisplayInput();
+            if (document.getElementById('error-msg')) document.getElementById('error-msg').classList.add('hidden');
+            isDriving = false; isResultShowing = false;
+
+            if (isCampaignMode) {
+                if (campaignStep >= CAMPAIGN_LEVELS.length) { handleNextBtn(); return; }
+                const lvl = CAMPAIGN_LEVELS[campaignStep];
+                missionType = lvl.type; gapLength = lvl.gap;
+                if (missionType === 'fleet') { fleetWidths = [...lvl.fleetW]; vehicleWidth = fleetWidths.reduce((a,b)=>a+b, 0); } 
+                else { vehicleWidth = lvl.vWidth || 1; fleetWidths = []; }
+                
+                document.getElementById('tutorial-badge').classList.add('hidden');
+                document.getElementById('campaign-badge').classList.remove('hidden');
+                document.getElementById('campaign-badge').innerText = `第 ${campaignStep+1} 關 / 20`;
+                document.getElementById('hud-campaign-level').innerText = campaignStep + 1;
+
+                gridStartX = -Math.floor(gapLength / 2); gridEndX = gridStartX + gapLength; gridStartZ = -Math.floor(vehicleWidth / 2);
+                const totalArea = gapLength * vehicleWidth;
+
+                if (missionType === 'island') { const n = lvl.islandCount || 1; correctCount = totalArea - n; generateIslands(n); } 
+                else if (missionType === 'heavy') { correctCount = totalArea * 2; } 
+                else if (missionType === 'repair') { const n = lvl.missingCount || 2; correctCount = n; generatePrebuiltBridge(n, totalArea); } 
+                else { correctCount = totalArea; }
+            } else if (isTutorialMode) {
+                missionType = tutorialSequence[tutorialStep];
+                document.getElementById('tutorial-badge').classList.remove('hidden'); document.getElementById('tutorial-badge').innerText = `教學進度 ${tutorialStep + 1}/5`;
+                document.getElementById('campaign-badge').classList.add('hidden');
+                gapLength = Math.min(4 + tutorialStep, 12);
+
+                if (missionType === 'fleet') { fleetWidths = [1, 1]; vehicleWidth = 2; } 
+                else { vehicleWidth = Math.min(tutorialStep + 1, 3); fleetWidths = []; }
+
+                gridStartX = -Math.floor(gapLength / 2); gridEndX = gridStartX + gapLength; gridStartZ = -Math.floor(vehicleWidth / 2);
+                const totalArea = gapLength * vehicleWidth;
+
+                if (missionType === 'island') { const n = 2; correctCount = totalArea - n; generateIslands(n); } 
+                else if (missionType === 'heavy') { correctCount = totalArea * 2; } 
+                else if (missionType === 'repair') { const n = 4; correctCount = n; generatePrebuiltBridge(n, totalArea); } 
+                else { correctCount = totalArea; }
+            } else {
+                document.getElementById('tutorial-badge').classList.add('hidden'); document.getElementById('campaign-badge').classList.add('hidden');
+                const types = ['normal', 'island', 'heavy', 'repair', 'fleet'];
+                missionType = types[Math.floor(Math.random() * types.length)];
+                gapLength = Math.min(Math.floor(Math.random() * 5) + 3 + Math.floor(level/3), 12);
+
+                if (missionType === 'fleet') {
+                    const w1 = Math.floor(Math.random() * 2) + 1; const w2 = Math.floor(Math.random() * 2) + 1;
+                    fleetWidths = [w1, w2]; vehicleWidth = w1 + w2;
+                } else { vehicleWidth = Math.floor(Math.random() * 3) + 1; fleetWidths = []; }
+
+                gridStartX = -Math.floor(gapLength / 2); gridEndX = gridStartX + gapLength; gridStartZ = -Math.floor(vehicleWidth / 2);
+                const totalArea = gapLength * vehicleWidth;
+
+                if (missionType === 'island') { const n = Math.min(Math.floor(Math.random() * 3) + 1, totalArea - 2); correctCount = totalArea - n; generateIslands(n); } 
+                else if (missionType === 'heavy') { correctCount = totalArea * 2; } 
+                else if (missionType === 'repair') { const n = Math.min(Math.floor(totalArea * 0.4) + 1, totalArea - 1); correctCount = n; generatePrebuiltBridge(n, totalArea); } 
+                else { correctCount = totalArea; }
+            }
+
+            updateMissionUI(); createLands(); createVehicle();
+            if (isTutorialMode) createTutorialHintGrid();
+
+            const centerX = gridStartX + gapLength / 2; const centerZ = gridStartZ + vehicleWidth / 2;
+            camera.position.set(centerX, 24, centerZ + gapLength + 16);
+            if (controls) controls.target.set(centerX, 0, centerZ);
+
+            DOM.result.classList.add('hidden'); DOM.status.classList.add('hidden'); DOM.question.classList.remove('hidden');
+        }
+
+        function updateMissionUI() {
+            const instructionEl = document.getElementById('mission-instruction');
+            let content = "";
+
+            if (isTutorialMode) {
+                if (missionType === 'normal') { content = `<span class="text-blue-700 font-bold text-base">【教學 1：基礎建橋】</span><br>計算公式：<span class="font-bold">長度 × 寬度</span><br><br>請數數海峽有幾格長，再數數車子有幾格寬，兩者相乘就是答案喔！`; } 
+                else if (missionType === 'island') { content = `<span class="text-green-700 font-bold text-base">【教學 2：海中小島】</span><br>計算公式：<span class="font-bold">(長度 × 寬度) - 小島數量</span><br><br>海上的綠色小島已經佔了位置，算完總數後，記得把小島的格數扣掉！`; } 
+                else if (missionType === 'heavy') { content = `<span class="text-orange-700 font-bold text-base">【教學 3：重型貨車】</span><br>計算公式：<span class="font-bold">長度 × 寬度 × 2</span><br><br>貨車太重了！橋樑必須蓋 <span class="text-red-500 font-bold">2 層</span> 厚才能支撐，算完單層面積後記得乘以 2！`; } 
+                else if (missionType === 'repair') { content = `<span class="text-gray-700 font-bold text-base">【教學 4：爛橋修復】</span><br>計算公式：<span class="font-bold">數出缺少的洞口</span><br><br>這座橋破洞了，不需要重新計算整座橋，只要仔細數出缺了幾塊磚頭填上去就好！`; } 
+                else if (missionType === 'fleet') { content = `<span class="text-purple-700 font-bold text-base">【教學 5：車隊並排】</span><br>計算公式：<span class="font-bold">長度 × (車A寬 + 車B寬)</span><br><br>這次有兩輛車同時過橋！把它們的寬度加起來，再乘上海峽的長度吧！`; }
+            } else {
+                let baseText = `請仔細觀察畫面上的<span class="text-blue-600 font-bold">網格</span>，自行計算出：<br>1. 兩岸的海峽間隔<br>2. 過橋的車輛寬度<br><br>`;
+                if (missionType === 'normal') { content = baseText + `<span class="text-red-600 font-bold">⚠️ 注意：</span>請使用<span class="underline">最準確數量</span>的材料建造。`; } 
+                else if (missionType === 'island') { content = baseText + `<span class="text-green-600 font-bold">🏝️ 海中小島：</span>天然小島已佔位，請將其格數<span class="underline">減去</span>喔！`; } 
+                else if (missionType === 'heavy') { content = baseText + `<span class="text-orange-600 font-bold">🚛 重型貨車：</span>車太重！橋樑需建 <span class="text-xl font-black text-red-500">2 層</span> 厚才能支撐。`; } 
+                else if (missionType === 'repair') { content = `畫面上有一座爛掉的舊橋！<br><span class="text-red-600 font-bold">🛠️ 修復任務：</span>請數數看還<span class="underline">缺少多少塊</span>磚頭，填入正確數字！`; } 
+                else if (missionType === 'fleet') { content = baseText + `<span class="text-purple-600 font-bold">🏎️ 車隊並排：</span>這次有兩輛車並排！請把所有車子的總寬度相加後再計算。`; }
+            }
+            instructionEl.innerHTML = content;
+        }
+
+        function generateIslands(num) {
+            let allCells = [];
+            for(let x=0; x<gapLength; x++) for(let z=0; z<vehicleWidth; z++) allCells.push({x: gridStartX + x + 0.5, z: gridStartZ + z + 0.5});
+            allCells.sort(() => Math.random() - 0.5); const selected = allCells.slice(0, num);
+            
+            selected.forEach(pos => {
+                islandCoordinates.push(`${pos.x},${pos.z}`);
+                const islandMat = new THREE.MeshLambertMaterial({ color: 0x4ade80 });
+                const edgeMat = new THREE.LineBasicMaterial({ color: 0x22c55e });
+                [-0.5, 0.5].forEach(iy => {
+                    const geo = new THREE.BoxGeometry(1, 1, 1); const mesh = new THREE.Mesh(geo, islandMat);
+                    mesh.position.set(pos.x, iy, pos.z); mesh.castShadow = true; mesh.receiveShadow = true;
+                    mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo), edgeMat)); scene.add(mesh);
+                    const body = new CANNON.Body({ mass: 0, type: CANNON.Body.STATIC });
+                    body.addShape(new CANNON.Box(new CANNON.Vec3(0.5, 0.5, 0.5))); body.position.copy(mesh.position);
+                    world.addBody(body); islandBlocks.push({mesh, body});
+                });
+            });
+        }
+
+        function generatePrebuiltBridge(numMissing, totalArea) {
+            let allCells = [];
+            for(let x=0; x<gapLength; x++) for(let z=0; z<vehicleWidth; z++) allCells.push({x: gridStartX + x + 0.5, z: gridStartZ + z + 0.5});
+            allCells.sort(() => Math.random() - 0.5); missingCells = allCells.slice(0, numMissing); const prebuiltCells = allCells.slice(numMissing);
+
+            prebuiltCells.forEach(pos => {
+                const geo = new THREE.BoxGeometry(1, 1, 1); const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color: 0x9ca3af }));
+                mesh.position.set(pos.x, 0.5, pos.z); mesh.castShadow = true; mesh.receiveShadow = true;
+                mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color: 0x4b5563 }))); scene.add(mesh);
+                const body = new CANNON.Body({ mass: 1, type: CANNON.Body.STATIC });
+                body.addShape(new CANNON.Box(new CANNON.Vec3(0.5, 0.5, 0.5))); body.position.copy(mesh.position);
+                world.addBody(body); builtBlocks.push({mesh, body, targetY: 0.5, isAnimating: false});
+            });
+        }
+
+        function createLands() {
+            const landDepth = 40; const landWidth = 40; const landHeight = 2; const landSurfaceY = 1.0; const landBottomY = landSurfaceY - landHeight;
+            const mat = new THREE.MeshLambertMaterial({ color: 0x4ade80 });
+
+            const leftLandCX = gridStartX - landWidth / 2;
+            leftLandMesh = new THREE.Mesh(new THREE.BoxGeometry(landWidth - 1, landHeight, landDepth), mat);
+            leftLandMesh.position.set(leftLandCX - 0.5, landBottomY + landHeight/2, 0); leftLandMesh.receiveShadow = true; scene.add(leftLandMesh);
+            leftLandBody = new CANNON.Body({ mass: 0, type: CANNON.Body.STATIC });
+            leftLandBody.addShape(new CANNON.Box(new CANNON.Vec3((landWidth-1)/2, landHeight/2, landDepth/2)));
+            leftLandBody.position.copy(leftLandMesh.position); world.addBody(leftLandBody);
+
+            const rightLandCX = gridEndX + landWidth / 2;
+            rightLandMesh = new THREE.Mesh(new THREE.BoxGeometry(landWidth - 1, landHeight, landDepth), mat);
+            rightLandMesh.position.set(rightLandCX + 0.5, landBottomY + landHeight/2, 0); rightLandMesh.receiveShadow = true; scene.add(rightLandMesh);
+            rightLandBody = new CANNON.Body({ mass: 0, type: CANNON.Body.STATIC });
+            rightLandBody.addShape(new CANNON.Box(new CANNON.Vec3((landWidth-1)/2, landHeight/2, landDepth/2)));
+            rightLandBody.position.copy(rightLandMesh.position); world.addBody(rightLandBody);
+
+            const stripHalfZ = Math.max(vehicleWidth / 2 + 2, 4); const stripDepth = stripHalfZ * 2;
+            const addStrip = (edgeX, dirSign) => {
+                const s = new THREE.Mesh(new THREE.BoxGeometry(1, landHeight, stripDepth), mat);
+                s.position.set(edgeX + dirSign * 0.5, landBottomY + landHeight/2, 0); s.receiveShadow = true; scene.add(s); landGrids.push(s);
+                const sb = new CANNON.Body({ mass: 0, type: CANNON.Body.STATIC });
+                sb.addShape(new CANNON.Box(new CANNON.Vec3(0.5, landHeight/2, stripDepth/2))); sb.position.copy(s.position); world.addBody(sb);
+            };
+            addStrip(gridStartX, -1); addStrip(gridEndX, +1);
+
+            addJaggedEdge(gridStartX, landHeight, landDepth, landBottomY, stripHalfZ, -1);
+            addJaggedEdge(gridEndX, landHeight, landDepth, landBottomY, stripHalfZ, +1);
+
+            const leftGrid = new THREE.GridHelper(landWidth, landWidth, 0x000000, 0x000000); leftGrid.position.set(leftLandCX, landSurfaceY + 0.01, 0); leftGrid.material.opacity = 0.3; leftGrid.material.transparent = true; scene.add(leftGrid); landGrids.push(leftGrid);
+            const rightGrid = new THREE.GridHelper(landWidth, landWidth, 0x000000, 0x000000); rightGrid.position.set(rightLandCX, landSurfaceY + 0.01, 0); rightGrid.material.opacity = 0.3; rightGrid.material.transparent = true; scene.add(rightGrid); landGrids.push(rightGrid);
+
+            addSideFaceGrids(gridStartX, landHeight, landDepth, landSurfaceY, landBottomY); addSideFaceGrids(gridEndX, landHeight, landDepth, landSurfaceY, landBottomY);
+            addTerrainBumps(leftLandCX, landWidth, landDepth, landSurfaceY); addTerrainBumps(rightLandCX, landWidth, landDepth, landSurfaceY);
+            spawnVegetation(leftLandCX, landWidth, landDepth, landSurfaceY); spawnVegetation(rightLandCX, landWidth, landDepth, landSurfaceY);
+        }
+
+        function addJaggedEdge(edgeX, landHeight, landDepth, bottomY, stripHalfZ, dirSign) {
+            const colors = [0x4ade80, 0x3dcf70, 0x52e88a, 0x22c55e]; const mat = (c) => new THREE.MeshLambertMaterial({ color: c });
+            for (let col = 0; col < landDepth; col++) {
+                const midZ = -landDepth / 2 + col + 0.5; if (Math.abs(midZ) < stripHalfZ) continue;
+                if (Math.random() < 0.5) continue;
+                const pillar = new THREE.Mesh(new THREE.BoxGeometry(1, landHeight, 1), mat(colors[Math.floor(Math.random() * colors.length)]));
+                pillar.position.set(edgeX + dirSign * 0.5, bottomY + landHeight / 2, midZ); pillar.receiveShadow = true; scene.add(pillar); landGrids.push(pillar);
+                const pb = new CANNON.Body({ mass: 0, type: CANNON.Body.STATIC }); pb.addShape(new CANNON.Box(new CANNON.Vec3(0.5, landHeight / 2, 0.5))); pb.position.copy(pillar.position); world.addBody(pb);
+            }
+        }
+
+        function addTerrainBumps(centerX, landWidth, landDepth, surfaceY) {
+            const bumpColors = [0x4ade80, 0x3dcf70, 0x52e88a, 0x22c55e]; const rng = (a, b) => a + Math.random() * (b - a);
+            const roadHalfZ = vehicleWidth / 2 + 1.5;
+            for (let i = 0; i < 28; i++) {
+                const bx = centerX + rng(-landWidth * 0.46, landWidth * 0.46); let bz = rng(-landDepth * 0.46, landDepth * 0.46);
+                if (Math.abs(bz) < roadHalfZ) bz = (bz < 0 ? -1 : 1) * (roadHalfZ + rng(0.3, 1.5));
+                const bump = new THREE.Mesh(new THREE.BoxGeometry(rng(0.8, 2.4), rng(0.05, 0.35), rng(0.8, 2.4)), new THREE.MeshLambertMaterial({ color: bumpColors[Math.floor(Math.random() * bumpColors.length)] }));
+                bump.position.set(bx, surfaceY + bump.geometry.parameters.height / 2, bz); bump.rotation.y = rng(0, Math.PI); bump.receiveShadow = true; scene.add(bump); landGrids.push(bump);
+            }
+        }
+
+        function addSideFaceGrids(edgeX, landHeight, landDepth, surfaceY, bottomY) {
+            const linemat = new THREE.LineBasicMaterial({ color: 0x166534, transparent: true, opacity: 0.55 }); const faceGroup = new THREE.Group();
+            for (let row = 0; row <= landHeight; row++) faceGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(edgeX, bottomY + row, -landDepth / 2), new THREE.Vector3(edgeX, bottomY + row, landDepth / 2)]), linemat));
+            for (let col = 0; col <= landDepth; col++) faceGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(edgeX, bottomY, -landDepth / 2 + col), new THREE.Vector3(edgeX, surfaceY, -landDepth / 2 + col)]), linemat));
+            scene.add(faceGroup); landGrids.push(faceGroup);
+        }
+
+        function spawnVegetation(centerX, landWidth, landDepth, surfaceY) {
+            const addMesh = (mesh) => { scene.add(mesh); landGrids.push(mesh); }; const rng = (min, max) => min + Math.random() * (max - min);
+            const treeMat = new THREE.MeshLambertMaterial({ color: 0x166534 }); const trunkMat = new THREE.MeshLambertMaterial({ color: 0x7c4a23 });
+            for (let i = 0; i < 8 + Math.floor(Math.random() * 5); i++) {
+                let lx, lz, attempts = 0;
+                do { lx = centerX + rng(-landWidth/2 + 2, landWidth/2 - 2); lz = rng(-landDepth/2 + 2, landDepth/2 - 2); attempts++; } while (Math.abs(lz) < vehicleWidth/2 + 1.5 && attempts < 20);
+                const scale = rng(0.7, 1.4); const trunkH = scale * 1.2;
+                const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.12*scale, 0.18*scale, trunkH, 8), trunkMat); trunk.position.set(lx, surfaceY + trunkH/2, lz); trunk.castShadow = true; addMesh(trunk);
+                const f1 = new THREE.Mesh(new THREE.ConeGeometry(0.85*scale, 1.4*scale, 10), treeMat); f1.position.set(lx, surfaceY + trunkH + 0.6*scale, lz); f1.castShadow = true; addMesh(f1);
+                const f2 = new THREE.Mesh(new THREE.ConeGeometry(0.55*scale, 1.1*scale, 10), new THREE.MeshLambertMaterial({ color: 0x15803d })); f2.position.set(lx, surfaceY + trunkH + 1.25*scale, lz); f2.castShadow = true; addMesh(f2);
+                const f3 = new THREE.Mesh(new THREE.ConeGeometry(0.28*scale, 0.65*scale, 8), new THREE.MeshLambertMaterial({ color: 0x14532d })); f3.position.set(lx, surfaceY + trunkH + 1.9*scale, lz); addMesh(f3);
+            }
+            for (let i = 0; i < 6 + Math.floor(Math.random() * 5); i++) {
+                const lx = centerX + rng(-landWidth/2 + 1.5, landWidth/2 - 1.5); const lz = rng(-landDepth/2 + 1.5, landDepth/2 - 1.5); const sc = rng(0.3, 0.6);
+                const bushColor = [0x22c55e, 0x16a34a, 0x15803d][Math.floor(Math.random()*3)];
+                const bush = new THREE.Mesh(new THREE.SphereGeometry(sc, 8, 6), new THREE.MeshLambertMaterial({ color: bushColor })); bush.scale.y = 0.65; bush.position.set(lx, surfaceY + sc*0.65, lz); bush.castShadow = true; addMesh(bush);
+                const bush2 = new THREE.Mesh(new THREE.SphereGeometry(sc*0.75, 7, 5), new THREE.MeshLambertMaterial({ color: bushColor })); bush2.scale.y = 0.6; bush2.position.set(lx + rng(-sc*0.6, sc*0.6), surfaceY + sc*0.5, lz + rng(-sc*0.6, sc*0.6)); bush2.castShadow = true; addMesh(bush2);
+            }
+        }
+
+        function createTutorialHintGrid() {
+            let cells = [];
+            if (missionType === 'repair') { cells = missingCells.map(c => ({ x: c.x, z: c.z })); } 
+            else if (missionType === 'island') {
+                for (let x = 0; x < gapLength; x++) for (let z = 0; z < vehicleWidth; z++) {
+                    if (!islandCoordinates.includes(`${gridStartX + x + 0.5},${gridStartZ + z + 0.5}`)) cells.push({ x: gridStartX + x + 0.5, z: gridStartZ + z + 0.5 });
+                }
+            } else { for (let x = 0; x < gapLength; x++) for (let z = 0; z < vehicleWidth; z++) cells.push({ x: gridStartX + x + 0.5, z: gridStartZ + z + 0.5 }); }
+
+            const hintMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.22, depthWrite: false, side: THREE.DoubleSide });
+            const edgeMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.90 });
+            const cellGeo = new THREE.BoxGeometry(0.96, 0.96, 0.96); const edgeGeo = new THREE.EdgesGeometry(cellGeo);
+            const layerYs = missionType === 'heavy' ? [-0.5, 0.5] : [0.5];
+
+            cells.forEach(pos => {
+                layerYs.forEach(yPos => {
+                    const fill = new THREE.Mesh(cellGeo, hintMat); fill.position.set(pos.x, yPos, pos.z); scene.add(fill); landGrids.push(fill);
+                    const outline = new THREE.LineSegments(edgeGeo, edgeMat); outline.position.set(pos.x, yPos, pos.z); scene.add(outline); landGrids.push(outline);
+                });
+            });
+        }
+
+        function buildDetailedCar(group, carColor, carCenterZ, visualWidth, offsetX) {
+            const bW = visualWidth; const mat = c => new THREE.MeshLambertMaterial({ color: c }); const box = (w,h,d) => new THREE.BoxGeometry(w,h,d);
+            const add = (geo, col, x, y, z, rx=0, ry=0, rz=0) => { const m = new THREE.Mesh(geo, mat(col)); m.position.set(offsetX + x, y, carCenterZ + z); m.rotation.set(rx, ry, rz); m.castShadow = true; group.add(m); return m; };
+            add(box(2.6, 0.55, bW), carColor, 0, 0.375, 0); add(box(2.6, 0.12, 0.06), 0x222222, 0, 0.18, bW/2 + 0.03); add(box(2.6, 0.12, 0.06), 0x222222, 0, 0.18, -(bW/2 + 0.03));
+            const cabW = bW - 0.08; add(box(1.5, 0.52, cabW), carColor, -0.1, 0.93, 0); add(box(0.05, 0.45, cabW - 0.06), 0x1a3a5c, 0.65, 0.93, 0, 0, 0, -0.38); add(box(0.05, 0.38, cabW - 0.06), 0x1a3a5c, -0.78, 0.95, 0, 0, 0, 0.35);
+            add(box(0.55, 0.30, 0.04), 0x3a6ea5, -0.16, 0.99, cabW/2); add(box(0.55, 0.30, 0.04), 0x3a6ea5, 0.38, 0.99, cabW/2); add(box(0.55, 0.30, 0.04), 0x3a6ea5, -0.16, 0.99, -cabW/2); add(box(0.55, 0.30, 0.04), 0x3a6ea5, 0.38, 0.99, -cabW/2);
+            add(box(1.5, 0.06, cabW), 0xdddddd, -0.1, 1.205, 0); add(box(0.9, 0.06, bW - 0.06), carColor, 0.9, 0.67, 0); add(box(0.75, 0.06, bW - 0.06), carColor, -1.0, 0.67, 0);
+            add(box(0.1, 0.22, bW + 0.05), 0x333333, 1.35, 0.22, 0); add(box(0.1, 0.22, bW + 0.05), 0x333333, -1.35, 0.22, 0);
+            add(box(0.08, 0.14, 0.28), 0xfffde7, 1.3, 0.46, bW/2 - 0.18); add(box(0.08, 0.14, 0.28), 0xfffde7, 1.3, 0.46, -(bW/2 - 0.18));
+            const tyreGeo = new THREE.CylinderGeometry(0.32, 0.32, 0.22, 20); tyreGeo.rotateX(Math.PI / 2); const rimGeo = new THREE.CylinderGeometry(0.18, 0.18, 0.24, 12); rimGeo.rotateX(Math.PI / 2);
+            [0.78, -0.78].forEach(wx => { [bW/2 + 0.08, -(bW/2 + 0.08)].forEach(wz => {
+                const tyre = new THREE.Mesh(tyreGeo, mat(0x1a1a1a)); tyre.position.set(offsetX + wx, 0.32, carCenterZ + wz); tyre.castShadow = true; group.add(tyre); wheels.push(tyre);
+                const rim = new THREE.Mesh(rimGeo, mat(0xb0b0b0)); rim.position.set(offsetX + wx, 0.32, carCenterZ + wz); group.add(rim); wheels.push(rim);
+            });});
+        }
+
+        function buildDetailedTruck(group, carCenterZ, visualWidth) {
+            const bW = visualWidth;
+            const mat = c => new THREE.MeshLambertMaterial({ color: c });
+            const box = (w,h,d) => new THREE.BoxGeometry(w,h,d);
+            const add = (geo, col, x, y, z) => {
+                const m = new THREE.Mesh(geo, mat(col));
+                m.position.set(x, y, carCenterZ + z);
+                m.castShadow = true;
+                group.add(m);
+                return m;
+            };
+
+            add(box(1.6, 1.1, bW), 0xeab308, 0.9, 0.75, 0);
+            add(box(1.18, 0.38, bW - 0.12), 0xd4a017, 0.95, 1.36, 0);
+            add(box(0.06, 0.62, bW - 0.16), 0x1a3a5c, 1.72, 0.92, 0);
+            add(box(0.13, 0.38, bW + 0.1), 0x333333, 1.78, 0.37, 0);
+            add(box(0.07, 0.17, 0.31), 0xfffde7, 1.76, 0.78, bW/2 - 0.22);
+            add(box(0.07, 0.17, 0.31), 0xfffde7, 1.76, 0.78, -(bW/2 - 0.22));
+            add(box(0.07, 0.33, bW * 0.48), 0x111111, 1.77, 0.54, 0);
+            for(let i=0; i<3; i++) add(box(0.05, 0.035, bW * 0.48), 0xaaaaaa, 1.775, 0.425 + i*0.095, 0);
+            const exGeo = new THREE.CylinderGeometry(0.06, 0.06, 1.0, 8);
+            const ex1 = new THREE.Mesh(exGeo, mat(0x888888));
+            ex1.position.set(0.35, 1.55, carCenterZ + bW/2 - 0.18); group.add(ex1);
+            const ex2 = new THREE.Mesh(exGeo, mat(0x888888));
+            ex2.position.set(0.35, 1.55, carCenterZ - (bW/2 - 0.18)); group.add(ex2);
+            add(box(0.9, 0.3, 0.28), 0x666666, 0.6, 0.3, bW/2 + 0.14);
+            add(box(0.9, 0.3, 0.28), 0x666666, 0.6, 0.3, -(bW/2 + 0.14));
+            add(box(0.6, 0.1, bW * 0.6), 0x555555, 0.05, 1.08, 0);
+
+            add(box(2.6, 0.17, bW), 0x2d3748, -1.15, 0.5, 0);
+            add(box(2.62, 1.3, 0.07), 0x475569, -1.15, 1.15,  bW/2 + 0.015);
+            add(box(2.62, 1.3, 0.07), 0x475569, -1.15, 1.15, -(bW/2 + 0.015));
+            add(box(2.62, 0.07, bW + 0.02), 0x3d4f62, -1.15, 1.81, 0);
+            add(box(0.055, 1.3, bW + 0.01), 0x394858, -2.485, 1.15, 0);
+            add(box(0.04, 1.28, 0.035), 0x555555, -2.49, 1.15, 0); 
+            add(box(0.055, 0.17, 0.27), 0xcc0000, -2.485, 0.6,  bW/2 - 0.2);
+            add(box(0.055, 0.17, 0.27), 0xcc0000, -2.485, 0.6, -(bW/2 - 0.2));
+
+            const weightCanvas = document.createElement('canvas');
+            weightCanvas.width = 256; weightCanvas.height = 128;
+            const wCtx = weightCanvas.getContext('2d');
+            wCtx.fillStyle = '#FF4500';
+            wCtx.beginPath();
+            wCtx.roundRect(8, 8, 240, 112, 16);
+            wCtx.fill();
+            wCtx.strokeStyle = '#ffffff';
+            wCtx.lineWidth = 5;
+            wCtx.stroke();
+            wCtx.font = 'bold 54px Arial';
+            wCtx.textAlign = 'center';
+            wCtx.fillStyle = '#ffffff';
+            wCtx.fillText('⚠️ 超重！', 128, 56);
+            wCtx.font = 'bold 26px Arial';
+            wCtx.fillStyle = '#ffe066';
+            wCtx.fillText('需建 2 層橋！', 128, 100);
+
+            const weightTex = new THREE.CanvasTexture(weightCanvas);
+            const weightSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: weightTex, transparent: true }));
+            weightSprite.scale.set(2.8, 1.4, 1);
+            weightSprite.position.set(-0.6, 3.5, carCenterZ);
+            group.add(weightSprite);
+
+            const tyreGeo = new THREE.CylinderGeometry(0.34, 0.34, 0.24, 18);
+            tyreGeo.rotateX(Math.PI / 2);
+            const rimGeo = new THREE.CylinderGeometry(0.19, 0.19, 0.26, 10);
+            rimGeo.rotateX(Math.PI / 2);
+            const tyreMat = mat(0x1a1a1a);
+            const rimMat = mat(0xb0b0b0);
+
+            const steerX = 0.85;
+            [-1, 1].forEach(side => {
+                const wz = side * (bW/2 + 0.10);
+                const t = new THREE.Mesh(tyreGeo, tyreMat); t.position.set(steerX, 0.34, carCenterZ + wz); t.castShadow = true; group.add(t); wheels.push(t);
+                const r = new THREE.Mesh(rimGeo, rimMat); r.position.set(steerX, 0.34, carCenterZ + wz); group.add(r); wheels.push(r);
+            });
+            [0.1, -0.5].forEach(ax => {
+                [-1, 1].forEach(side => {
+                    const outerZ = side * (bW/2 + 0.14);
+                    const innerZ = side * (bW/2 - 0.02);
+                    [outerZ, innerZ].forEach(wz => {
+                        const t = new THREE.Mesh(tyreGeo, tyreMat); t.position.set(ax, 0.34, carCenterZ + wz); t.castShadow = true; group.add(t); wheels.push(t);
+                        const r = new THREE.Mesh(rimGeo, rimMat); r.position.set(ax, 0.34, carCenterZ + wz); group.add(r); wheels.push(r);
+                    });
+                });
+            });
+            [-1.95].forEach(ax => {
+                [-1, 1].forEach(side => {
+                    const wz = side * (bW/2 + 0.10);
+                    const t = new THREE.Mesh(tyreGeo, tyreMat); t.position.set(ax, 0.34, carCenterZ + wz); t.castShadow = true; group.add(t); wheels.push(t);
+                    const r = new THREE.Mesh(rimGeo, rimMat); r.position.set(ax, 0.34, carCenterZ + wz); group.add(r); wheels.push(r);
+                });
+            });
+        }
+
+        function createVehicle() {
+            carGroup = new THREE.Group(); let carColors = [0xef4444, 0xf59e0b, 0x3b82f6, 0xa855f7, 0x10b981, 0xf97316]; let mainCarLen = 2.6;
+            if (missionType === 'fleet') {
+                let currentZ = gridStartZ;
+                fleetWidths.forEach((w, index) => {
+                    buildDetailedCar(carGroup, carColors[(level + index) % carColors.length], currentZ + w / 2, Math.max(w * 0.75, 0.7), 0);
+                    currentZ += w;
+                });
+            } else {
+                const visualWidth = Math.max(vehicleWidth * 0.75, 0.7); const carCenterZ = gridStartZ + vehicleWidth / 2;
+                if (missionType === 'heavy') { mainCarLen = 5.0; buildDetailedTruck(carGroup, carCenterZ, visualWidth); } 
+                else { buildDetailedCar(carGroup, carColors[level % carColors.length], carCenterZ, visualWidth, 0); }
+            }
+            carGroup.position.set(gridStartX - mainCarLen / 2 - 1, 1.0, 0); scene.add(carGroup);
+            carBody = new CANNON.Body({ mass: 5, type: CANNON.Body.KINEMATIC });
+            carBody.addShape(new CANNON.Box(new CANNON.Vec3(mainCarLen/2, 0.5, vehicleWidth/2)), new CANNON.Vec3(0, 0.5, gridStartZ + vehicleWidth / 2));
+            carBody.position.copy(carGroup.position); world.addBody(carBody);
+        }
+
+        function onBuildStart() {
+            const guess = parseInt(numpadValue);
+            const errorMsg = document.getElementById('error-msg');
+            if (isNaN(guess) || guess <= 0 || guess > 100) { if (errorMsg) errorMsg.classList.remove('hidden'); return; }
+            if (errorMsg) errorMsg.classList.add('hidden');
+
+            targetBuildCount = guess;
+            isSuccess = (targetBuildCount === correctCount);
+
+            if (isCampaignMode) {
+                campaignAnswers.push(guess); 
+                if (isSuccess) campaignCorrect++;
+                campaignStep++;
+            }
+
+            DOM.question.classList.add('hidden'); DOM.status.classList.remove('hidden');
+            document.getElementById('block-count').innerText = '0 / ' + targetBuildCount;
+
+            let positionsToBuild = []; let correctPos = [];
+            if (missionType === 'heavy') {
+                for(let x = 0; x < gapLength; x++) for(let z = 0; z < vehicleWidth; z++) { correctPos.push({ x: gridStartX + x + 0.5, y: -0.5, z: gridStartZ + z + 0.5 }); correctPos.push({ x: gridStartX + x + 0.5, y: 0.5, z: gridStartZ + z + 0.5 }); }
+            } else if (missionType === 'island') {
+                for(let x = 0; x < gapLength; x++) for(let z = 0; z < vehicleWidth; z++) if (!islandCoordinates.includes(`${gridStartX + x + 0.5},${gridStartZ + z + 0.5}`)) correctPos.push({ x: gridStartX + x + 0.5, y: 0.5, z: gridStartZ + z + 0.5 });
+            } else if (missionType === 'repair') { missingCells.forEach(cell => correctPos.push({ x: cell.x, y: 0.5, z: cell.z })); } 
+            else { for(let x = 0; x < gapLength; x++) for(let z = 0; z < vehicleWidth; z++) correctPos.push({ x: gridStartX + x + 0.5, y: 0.5, z: gridStartZ + z + 0.5 }); }
+
+            if (targetBuildCount <= correctCount) { positionsToBuild = correctPos.slice(0, targetBuildCount); } 
+            else {
+                positionsToBuild = correctPos.slice(); let extraCount = targetBuildCount - correctCount; let currentExtraIndex = 0;
+                while(extraCount > 0) {
+                    const base = correctPos[currentExtraIndex % correctPos.length];
+                    positionsToBuild.push({ x: base.x, y: base.y + (Math.floor(currentExtraIndex / correctPos.length) + 1) * 1.0, z: base.z });
+                    currentExtraIndex++; extraCount--;
+                }
+            }
+            startBuildingAnimation(positionsToBuild);
+        }
+
+        function createBridgeBlock(pos) {
+            const mesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshLambertMaterial({ color: 0x9ca3af }));
+            mesh.castShadow = true; mesh.receiveShadow = true;
+            mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1)), new THREE.LineBasicMaterial({ color: 0x4b5563 })));
+            mesh.position.set(pos.x, pos.y + 8, pos.z); scene.add(mesh);
+            const body = new CANNON.Body({ mass: 1, type: CANNON.Body.STATIC });
+            body.addShape(new CANNON.Box(new CANNON.Vec3(0.5, 0.5, 0.5))); body.position.set(pos.x, pos.y, pos.z); world.addBody(body);
+            builtBlocks.push({ mesh, body, targetY: pos.y, isAnimating: true });
+        }
+
+        function startBuildingAnimation(positions) {
+            isBuilding = true; let currentIndex = 0; const totalToBuild = positions.length; const delay = Math.max(20, 1000 / totalToBuild);
+            buildingInterval = setInterval(() => {
+                if (currentIndex >= totalToBuild) { clearInterval(buildingInterval); isBuilding = false; DOM.status.classList.add('hidden'); startDriving(); return; }
+                playSound('pop'); createBridgeBlock(positions[currentIndex]); currentIndex++;
+                document.getElementById('block-count').innerText = `${currentIndex} / ${targetBuildCount}`;
+            }, delay);
+        }
+
+        function startDriving() { isDriving = true; playSound('engine'); }
+
+        function triggerCollapse() {
+            isDriving = false; playSound('explosion');
+            DOM.container.classList.add('shake'); isShaking = true;
+            setTimeout(() => { DOM.container.classList.remove('shake'); isShaking = false; }, 500);
+
+            builtBlocks.forEach(b => {
+                if(!b.body) return;
+                b.body.type = CANNON.Body.DYNAMIC; b.body.wakeUp();
+                b.body.velocity.set((Math.random()-0.5)*2, -2, (Math.random()-0.5)*2); b.body.angularVelocity.set(Math.random(), Math.random(), Math.random());
+            });
+
+            if (carBody) world.removeBody(carBody);
+            carGroup.userData = { isFreeFalling: true, velocityY: 0 };
+            setTimeout(() => finishLevel(false), 1500);
+        }
+
+        function finishLevel(success) {
+            isResultShowing = true;
+            if (isCampaignMode) {
+                if (success) { playSound('success'); spawnConfetti(); showResult(true, `第 ${campaignStep}/20 關完成！`, false, campaignStep >= CAMPAIGN_LEVELS.length); } 
+                else { showResult(false, `第 ${campaignStep}/20 關失敗`); }
+            } else if (isTutorialMode) {
+                if (success) {
+                    playSound('success'); spawnConfetti(); tutorialStep++;
+                    if (tutorialStep >= tutorialSequence.length) { tutorialCompleted = true; showResult(true, "教學模式完成！", true); } 
+                    else { showResult(true, "太棒了！準備進入下一堂課。"); }
+                } else { showResult(false, "沒關係，我們再來試一次！"); }
+            } else {
+                if (success) {
+                    playSound('success'); spawnConfetti();
+                    const timeBonus = 5; const scoreBonus = 50 * level * (1 + streak*0.2);
+                    timeLeft = Math.min(timeLeft + timeBonus, 50); score += Math.floor(scoreBonus); streak++;
+                    if(streak % 3 === 0) level++;
+                    updateHUD(); showResult(true, `+${Math.floor(scoreBonus)} 分 | +${timeBonus} 秒`);
+                } else {
+                    streak = 0; timeLeft = Math.max(1, timeLeft - 10);
+                    updateHUD(); showResult(false, `連勝中斷！ | -10 秒`);
+                }
+            }
+        }
+
+        function spawnConfetti() {
+            const colors = [0xff0000, 0x00ff00, 0x0000ff, 0xffff00, 0xff00ff, 0x00ffff]; const carCenterZ = gridStartZ + vehicleWidth / 2;
+            for(let i=0; i<100; i++) {
+                const mesh = new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.3), new THREE.MeshBasicMaterial({color: colors[Math.floor(Math.random()*colors.length)]}));
+                mesh.position.set(gridEndX + 2, 5, carCenterZ + (Math.random()-0.5)*5); 
+                mesh.velocity = new THREE.Vector3((Math.random()-0.5)*0.3, Math.random()*0.3 + 0.2, (Math.random()-0.5)*0.3);
+                mesh.life = 100 + Math.random()*50; scene.add(mesh); particles.push(mesh);
+            }
+        }
+
+        function showResult(success, statMsg, isTutorialEnd = false, isCampaignEnd = false) {
+            DOM.result.classList.remove('hidden');
+            const title = document.getElementById('result-title'); const scoreMsg = document.getElementById('result-score-change');
+            const msg = document.getElementById('result-msg'); const nextBtn = document.getElementById('next-btn');
+
+            scoreMsg.innerText = statMsg;
+            if (isTutorialEnd || isCampaignEnd) { nextBtn.innerText = isCampaignEnd ? "查看結果" : "結束並返回主畫面"; } 
+            else if (isTutorialMode) { nextBtn.innerText = success ? "下一堂課" : "重新挑戰本課"; } 
+            else if (isCampaignMode) { nextBtn.innerText = campaignStep >= CAMPAIGN_LEVELS.length ? "查看結果" : `第 ${campaignStep+1} 關 →`; } 
+            else { nextBtn.innerText = "繼續挑戰"; }
+
+            if (success) {
+                title.innerText = "🎉 完美過橋！"; title.className = "text-3xl font-black mb-1 text-green-600"; scoreMsg.className = "text-lg font-bold mb-3 text-green-500";
+                msg.innerHTML = `計算正確！需要 <strong>${correctCount}</strong> 格方塊。`;
+            } else {
+                title.innerText = "💥 橋樑倒塌！"; title.className = "text-3xl font-black mb-1 text-red-600"; scoreMsg.className = "text-lg font-bold mb-3 text-red-500";
+                let reason = targetBuildCount < correctCount ? "方塊不足，車輛掉入海中" : "方塊過多造成路障壓垮橋樑";
+                msg.innerHTML = `${reason}。<br>正確答案應該是 <strong>${correctCount}</strong> 格方塊。`;
+            }
+        }
+    </script>
+</body>
+</html>

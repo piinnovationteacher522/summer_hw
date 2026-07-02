@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>太空人特訓 · 太空垃圾收集機械人</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --void:#060912;
+    --panel:rgba(10,18,33,.72);
+    --cyan:#4dd9e6;
+    --cyan-soft:#9af0f7;
+    --orange:#ff8a3d;
+    --hazard:#ffd24a;
+    --ink:#f3f7ff;
+    --slate:#8aa0c2;
+    --lock:#7dff9b;
+    --danger:#ff5d6c;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden;background:var(--void);color:var(--ink);
+    font-family:"Noto Sans TC",system-ui,sans-serif;-webkit-user-select:none;user-select:none;
+    -webkit-tap-highlight-color:transparent;touch-action:none}
+  #scene{position:fixed;inset:0;z-index:0}
+  canvas{display:block}
+
+  /* ---------- HUD ---------- */
+  #hud{position:fixed;inset:0;z-index:5;pointer-events:none}
+  .visor-corner{position:absolute;width:54px;height:54px;border:2px solid var(--cyan);opacity:.55}
+  .vc-tl{top:18px;left:18px;border-right:0;border-bottom:0;border-radius:14px 0 0 0}
+  .vc-tr{top:18px;right:18px;border-left:0;border-bottom:0;border-radius:0 14px 0 0}
+  .vc-bl{bottom:18px;left:18px;border-right:0;border-top:0;border-radius:0 0 0 14px}
+  .vc-br{bottom:18px;right:18px;border-left:0;border-top:0;border-radius:0 0 14px 0}
+
+  .panel{position:absolute;background:var(--panel);border:1px solid rgba(77,217,230,.28);
+    border-radius:14px;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+    padding:11px 16px;box-shadow:0 6px 30px rgba(0,0,0,.45)}
+  .eyebrow{font-family:"Orbitron",sans-serif;font-size:10px;letter-spacing:.28em;
+    color:var(--cyan);text-transform:uppercase}
+  .readout{font-family:"Orbitron",sans-serif;font-weight:900;line-height:1}
+
+  #score-panel{top:30px;left:30px}
+  #score-panel .readout{font-size:34px;color:var(--ink)}
+  #score-panel .readout span{color:var(--hazard)}
+
+  #time-panel{top:30px;right:30px;text-align:right;min-width:118px}
+  #time-panel .readout{font-size:34px;color:var(--cyan-soft)}
+  #time-panel.low .readout{color:var(--danger);animation:pulse .6s infinite}
+  @keyframes pulse{50%{opacity:.45}}
+
+  #combo{position:absolute;left:50%;top:18%;transform:translate(-50%,-50%) scale(.6);
+    font-family:"Orbitron",sans-serif;font-weight:900;font-size:40px;color:var(--orange);
+    text-shadow:0 0 22px rgba(255,138,61,.7);opacity:0;transition:none;text-align:center}
+  #combo small{display:block;font-size:13px;letter-spacing:.2em;color:var(--hazard)}
+
+  #reticle{position:absolute;width:84px;height:84px;left:0;top:0;margin:-42px 0 0 -42px;
+    z-index:4;pointer-events:none;opacity:0;transition:opacity .15s}
+  #reticle svg{width:100%;height:100%;display:block}
+  #reticle .ret-stroke{stroke:var(--cyan);transition:stroke .12s}
+  #reticle.lock .ret-stroke{stroke:var(--lock)}
+  #reticle .ret-label{font-family:"Orbitron",sans-serif;font-size:9px;fill:var(--cyan);
+    letter-spacing:.18em;transition:fill .12s}
+  #reticle.lock .ret-label{fill:var(--lock)}
+
+  #ctrl-hint{bottom:34px;left:50%;transform:translateX(-50%);text-align:center;
+    font-size:12.5px;color:var(--slate);letter-spacing:.04em;padding:9px 18px}
+  #ctrl-hint b{color:var(--cyan-soft);font-weight:700}
+
+  /* ---------- Overlays ---------- */
+  .screen{position:fixed;inset:0;z-index:20;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;text-align:center;padding:30px;
+    background:radial-gradient(120% 90% at 50% 12%,rgba(20,40,70,.5),rgba(4,7,15,.94) 70%);
+    backdrop-filter:blur(3px)}
+  .screen.hidden{display:none}
+  .mission-tag{font-family:"Orbitron",sans-serif;font-size:12px;letter-spacing:.42em;
+    color:var(--orange);text-transform:uppercase;margin-bottom:20px}
+  .mission-tag::before,.mission-tag::after{content:"";display:inline-block;width:34px;height:1px;
+    background:var(--orange);vertical-align:middle;margin:0 14px;opacity:.6}
+  h1{font-family:"Orbitron",sans-serif;font-weight:900;font-size:clamp(30px,6.4vw,58px);
+    line-height:1.04;letter-spacing:.01em;margin-bottom:6px}
+  h1 .glow{color:var(--cyan);text-shadow:0 0 30px rgba(77,217,230,.55)}
+  .sub{font-size:clamp(14px,2.6vw,17px);color:var(--slate);max-width:540px;line-height:1.7;margin:14px 0 30px}
+  .sub b{color:var(--cyan-soft)}
+
+  .brief{display:flex;gap:14px;flex-wrap:wrap;justify-content:center;max-width:680px;margin-bottom:34px}
+  .brief-card{flex:1 1 180px;min-width:170px;background:var(--panel);border:1px solid rgba(77,217,230,.22);
+    border-radius:16px;padding:18px 16px;text-align:left}
+  .brief-card .num{font-family:"Orbitron",sans-serif;font-weight:700;font-size:12px;
+    color:var(--orange);letter-spacing:.2em}
+  .brief-card h3{font-size:16px;font-weight:900;margin:8px 0 6px;color:var(--ink)}
+  .brief-card p{font-size:13px;color:var(--slate);line-height:1.6}
+
+  .btn{pointer-events:auto;cursor:pointer;font-family:"Orbitron",sans-serif;font-weight:700;
+    font-size:16px;letter-spacing:.12em;color:var(--void);
+    background:linear-gradient(135deg,var(--cyan),var(--cyan-soft));
+    border:0;border-radius:50px;padding:16px 42px;text-transform:uppercase;
+    box-shadow:0 8px 34px rgba(77,217,230,.4);transition:transform .15s,box-shadow .15s}
+  .btn:hover{transform:translateY(-2px);box-shadow:0 12px 40px rgba(77,217,230,.55)}
+  .btn:active{transform:translateY(0)}
+  .btn.ghost{background:transparent;color:var(--cyan);border:1.5px solid var(--cyan);
+    box-shadow:none;margin-top:14px;font-size:13px;padding:12px 30px}
+
+  /* result screen */
+  #final-score{font-family:"Orbitron",sans-serif;font-weight:900;
+    font-size:clamp(60px,16vw,120px);line-height:1;color:var(--hazard);
+    text-shadow:0 0 40px rgba(255,210,74,.5);margin:6px 0}
+  .stat-row{display:flex;gap:26px;justify-content:center;margin:10px 0 26px;flex-wrap:wrap}
+  .stat{min-width:96px}
+  .stat .v{font-family:"Orbitron",sans-serif;font-weight:700;font-size:26px;color:var(--cyan-soft)}
+  .stat .k{font-size:11px;color:var(--slate);letter-spacing:.16em;margin-top:4px}
+  .rank{font-size:15px;color:var(--slate);max-width:480px;line-height:1.7;margin-bottom:30px}
+  .rank b{color:var(--orange);font-weight:900;font-size:18px}
+
+  @media (max-width:600px){
+    #score-panel,#time-panel{top:22px}
+    #score-panel{left:20px}#time-panel{right:20px}
+    #score-panel .readout,#time-panel .readout{font-size:26px}
+    .visor-corner{width:40px;height:40px}
+    .brief{display:none}
+  }
+  @media (prefers-reduced-motion:reduce){*{animation:none!important}}
+</style>
+</head>
+<body>
+<div id="scene"></div>
+
+<div id="hud">
+  <div class="visor-corner vc-tl"></div>
+  <div class="visor-corner vc-tr"></div>
+  <div class="visor-corner vc-bl"></div>
+  <div class="visor-corner vc-br"></div>
+  <div id="score-panel" class="panel">
+    <div class="eyebrow">已回收 · Salvage</div>
+    <div class="readout"><span id="score">0</span></div>
+  </div>
+  <div id="time-panel" class="panel">
+    <div class="eyebrow">任務時間</div>
+    <div class="readout"><span id="time">60</span><small style="font-size:14px">秒</small></div>
+  </div>
+  <div id="combo"></div>
+  <div id="reticle">
+    <svg viewBox="0 0 84 84">
+      <path class="ret-stroke" fill="none" stroke-width="2" d="M10 4 H4 V10 M74 4 H80 V10 M10 80 H4 V74 M74 80 H80 V74"/>
+      <circle class="ret-stroke" cx="42" cy="42" r="22" fill="none" stroke-width="1.4" stroke-dasharray="6 7"/>
+      <line class="ret-stroke" x1="42" y1="14" x2="42" y2="24" stroke-width="1.4"/>
+      <line class="ret-stroke" x1="42" y1="60" x2="42" y2="70" stroke-width="1.4"/>
+      <line class="ret-stroke" x1="14" y1="42" x2="24" y2="42" stroke-width="1.4"/>
+      <line class="ret-stroke" x1="60" y1="42" x2="70" y2="42" stroke-width="1.4"/>
+      <text class="ret-label" x="42" y="80" text-anchor="middle">TARGET</text>
+    </svg>
+  </div>
+  <div id="ctrl-hint" class="panel"></div>
+</div>
+
+<div id="start" class="screen">
+  <div class="mission-tag">太空人特訓大挑戰</div>
+  <h1>太空垃圾<br><span class="glow">收集機械人</span></h1>
+  <p class="sub">傾斜你嘅平板,操控機械人喺軌道上<b>左右上下</b>飛行,<br>
+     爪實迎面飛嚟嘅<b>隕石</b>同<b>人造衛星殘骸</b>。<br>
+     航天員需要極佳嘅<b>體能同反應</b> —— 郁多啲身,爪多啲垃圾!</p>
+  <div class="brief">
+    <div class="brief-card"><div class="num">01 · 操控</div><h3>陀螺儀導航</h3>
+      <p>平板向邊邊傾,機械人就向邊邊飛。企定、控制呼吸,先至爪得準。</p></div>
+    <div class="brief-card"><div class="num">02 · 反應</div><h3>鬥快攔截</h3>
+      <p>垃圾隨機飛嚟,越嚟越快。睇準瞄準框,喺佢飛過之前爪實。</p></div>
+    <div class="brief-card"><div class="num">03 · 連擊</div><h3>連環回收</h3>
+      <p>連續爪中可儲連擊,分數倍增。失手就斷 combo,專注啲!</p></div>
+  </div>
+  <button id="start-btn" class="btn">開始任務</button>
+  <button id="skip-gyro" class="btn ghost">用滑鼠 / 鍵盤玩(電腦)</button>
+</div>
+
+<div id="result" class="screen hidden">
+  <div class="mission-tag">任務完成 · 報告</div>
+  <div class="eyebrow" style="letter-spacing:.3em;color:var(--slate)">總回收分數</div>
+  <div id="final-score">0</div>
+  <div class="stat-row">
+    <div class="stat"><div class="v" id="r-count">0</div><div class="k">爪中件數</div></div>
+    <div class="stat"><div class="v" id="r-combo">0</div><div class="k">最高連擊</div></div>
+    <div class="stat"><div class="v" id="r-acc">0%</div><div class="k">命中率</div></div>
+  </div>
+  <div class="rank" id="rank-text"></div>
+  <button id="retry-btn" class="btn">再次出動</button>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function(){
+"use strict";
+
+const urlParams = new URLSearchParams(window.location.search);
+const studentClass = urlParams.get('class') || '未設定班別';
+const studentId = urlParams.get('id') || '未設定學號';
+
+const COL = { void:0x060912, cyan:0x4dd9e6, orange:0xff8a3d, hazard:0xffd24a,
+              metal:0x6f86a8, panel:0x2e4a78, lock:0x7dff9b, glow:0x9af0f7 };
+
+let renderer, scene, camera, clock;
+let robot, claw = {l:null,r:null}, robotGlow;
+let earth, nebula, stars;
+let W = innerWidth, H = innerHeight;
+
+const STATE = { MENU:0, PLAY:1, OVER:2 };
+let state = STATE.MENU;
+let score = 0, collected = 0, attempts = 0, combo = 0, bestCombo = 0;
+let timeLeft = 60, gameStart = 0, lastSpawn = 0, spawnGap = 1.2;
+let inputMode = "mouse"; 
+
+const robotTarget = { x:0, y:0.5 };
+const robotPos    = { x:0, y:0.5 };
+const BOUND = { x:9, y:[-4.5,6] };
+const CATCH_Z = 0, CATCH_RADIUS = 2.7;
+
+let gyroNeutral = null, gyroLatest = {beta:null,gamma:null};
+const debris = [];   
+const sparks = [];   
+
+const $ = id => document.getElementById(id);
+const elScore=$("score"), elTime=$("time"), elTimePanel=$("time-panel"),
+      elCombo=$("combo"), elReticle=$("reticle"), elHint=$("ctrl-hint");
+
+function initThree(){
+  renderer = new THREE.WebGLRenderer({antialias:true, alpha:false});
+  renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+  renderer.setSize(W,H);
+  $("scene").appendChild(renderer.domElement);
+
+  scene = new THREE.Scene();
+  scene.fog = new THREE.FogExp2(COL.void, 0.0065);
+
+  camera = new THREE.PerspectiveCamera(62, W/H, 0.1, 600);
+  camera.position.set(0,4,14);
+  clock = new THREE.Clock();
+
+  scene.add(new THREE.AmbientLight(0x35507a, 0.9));
+  const key = new THREE.DirectionalLight(0xffffff, 1.15);
+  key.position.set(-6,9,8); scene.add(key);
+  const rim = new THREE.PointLight(COL.cyan, 1.4, 80);
+  rim.position.set(8,2,-12); scene.add(rim);
+  const warm = new THREE.PointLight(COL.orange, 0.8, 60);
+  warm.position.set(-9,-4,6); scene.add(warm);
+
+  buildStars(); buildNebula(); buildEarth(); buildRobot(); buildSparkPool();
+  addEventListener("resize", onResize);
+}
+
+function buildStars(){
+  const g = new THREE.BufferGeometry();
+  const n = 1400, pos = new Float32Array(n*3), col = new Float32Array(n*3);
+  const c1 = new THREE.Color(0xffffff), c2 = new THREE.Color(COL.cyan), c3 = new THREE.Color(0xffe7c2);
+  for(let i=0;i<n;i++){
+    const r = 120 + Math.random()*240;
+    const th = Math.random()*Math.PI*2, ph = Math.acos(Math.random()*2-1);
+    pos[i*3]   = r*Math.sin(ph)*Math.cos(th);
+    pos[i*3+1] = r*Math.cos(ph);
+    pos[i*3+2] = r*Math.sin(ph)*Math.sin(th) - 80;
+    const c = Math.random()<.75?c1:(Math.random()<.5?c2:c3);
+    col[i*3]=c.r; col[i*3+1]=c.g; col[i*3+2]=c.b;
+  }
+  g.setAttribute("position", new THREE.BufferAttribute(pos,3));
+  g.setAttribute("color", new THREE.BufferAttribute(col,3));
+  stars = new THREE.Points(g, new THREE.PointsMaterial({size:1.1,vertexColors:true,transparent:true,opacity:.92,depthWrite:false}));
+  scene.add(stars);
+}
+
+function buildNebula(){
+  const tex = makeRadialTexture(["rgba(80,120,220,.55)","rgba(40,70,140,.18)","rgba(0,0,0,0)"]);
+  const m = new THREE.SpriteMaterial({map:tex,blending:THREE.AdditiveBlending,depthWrite:false,opacity:.7});
+  nebula = new THREE.Group();
+  const spots = [[-40,18,-150,120,0x4a78ff],[55,-10,-180,150,0x9a4dff],[10,40,-220,180,0x2ec5ff]];
+  spots.forEach(([x,y,z,s,c])=>{
+    const sp = new THREE.Sprite(m.clone());
+    sp.material.color = new THREE.Color(c);
+    sp.position.set(x,y,z); sp.scale.set(s,s,1); nebula.add(sp);
+  });
+  scene.add(nebula);
+}
+
+function buildEarth(){
+  earth = new THREE.Group();
+  const geo = new THREE.SphereGeometry(34, 48, 48);
+  const mat = new THREE.MeshStandardMaterial({color:0x2f6fd0, emissive:0x123a6e, emissiveIntensity:.5, roughness:.85, metalness:.1, map:makeEarthTexture()});
+  earth.add(new THREE.Mesh(geo, mat));
+  earth.add(new THREE.Mesh(new THREE.SphereGeometry(36,40,40), new THREE.MeshBasicMaterial({color:0x66c8ff,transparent:true,opacity:.18,side:THREE.BackSide,blending:THREE.AdditiveBlending})));
+  earth.position.set(-46,-30,-150);
+  scene.add(earth);
+}
+
+function buildRobot(){
+  robot = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.SphereGeometry(1.15,28,24), new THREE.MeshStandardMaterial({color:COL.metal,metalness:.85,roughness:.32,emissive:0x101e30,emissiveIntensity:.4}));
+  body.scale.set(1,0.9,1.25); robot.add(body);
+  const visor = new THREE.Mesh(new THREE.SphereGeometry(0.6,24,18,0,Math.PI*2,0,Math.PI*0.6), new THREE.MeshStandardMaterial({color:COL.cyan,emissive:COL.cyan,emissiveIntensity:1.4,metalness:.4,roughness:.2}));
+  visor.rotation.x = -Math.PI*0.5; visor.position.set(0,0.15,-1.0); visor.scale.set(1.1,1,1.1); robot.add(visor); robotGlow = visor;
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(1.25,0.12,12,32), new THREE.MeshStandardMaterial({color:COL.orange,emissive:COL.orange,emissiveIntensity:.6,metalness:.6,roughness:.4}));
+  ring.rotation.x = Math.PI*0.5; ring.position.y=-0.1; robot.add(ring);
+  claw.l = buildClawArm(-1); robot.add(claw.l);
+  claw.r = buildClawArm( 1); robot.add(claw.r);
+  [[-0.55,0],[0.55,0],[0,-0.55]].forEach(([x,y])=>{
+    const t = new THREE.Mesh(new THREE.CylinderGeometry(0.22,0.32,0.5,16), new THREE.MeshStandardMaterial({color:0x35506f,metalness:.8,roughness:.4}));
+    t.rotation.x = Math.PI*0.5; t.position.set(x,y,1.25); robot.add(t);
+    const flame = new THREE.Mesh(new THREE.ConeGeometry(0.2,0.9,14), new THREE.MeshBasicMaterial({color:COL.orange,transparent:true,opacity:.9,blending:THREE.AdditiveBlending}));
+    flame.rotation.x = -Math.PI*0.5; flame.position.set(x,y,1.95); flame.userData.flame = true; robot.add(flame);
+  });
+  const ant = new THREE.Mesh(new THREE.CylinderGeometry(0.03,0.03,0.9,8), new THREE.MeshStandardMaterial({color:0xaab8cc,metalness:.7,roughness:.3}));
+  ant.position.set(0.4,0.9,0.2); ant.rotation.z=-0.3; robot.add(ant);
+  const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.1,12,12), new THREE.MeshBasicMaterial({color:COL.hazard}));
+  bulb.position.set(0.27,1.32,0.2); robot.add(bulb);
+  robot.position.set(0,0.5,0); scene.add(robot);
+}
+
+function buildClawArm(side){
+  const arm = new THREE.Group();
+  const upper = new THREE.Mesh(new THREE.BoxGeometry(0.22,0.22,1.1), new THREE.MeshStandardMaterial({color:0x9fb0c8,metalness:.8,roughness:.35}));
+  upper.position.set(side*0.95,-0.1,-0.9); upper.rotation.y = side*0.18; arm.add(upper);
+  const pgrp = new THREE.Group();
+  const fmat = new THREE.MeshStandardMaterial({color:COL.orange,emissive:0x3a1500,emissiveIntensity:.4,metalness:.7,roughness:.4});
+  for(let s of [-1,1]){
+    const f = new THREE.Mesh(new THREE.ConeGeometry(0.12,0.6,10), fmat.clone());
+    f.position.set(s*0.18,0,0); f.rotation.x = Math.PI*0.5; f.rotation.z = -s*0.35; pgrp.add(f);
+  }
+  pgrp.position.set(side*1.2,-0.1,-1.55); arm.add(pgrp); arm.userData.pincer = pgrp; return arm;
+}
+
+function buildSparkPool(){
+  const geo = new THREE.SphereGeometry(0.12,6,6);
+  for(let i=0;i<70;i++){
+    const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({color:COL.hazard,transparent:true,blending:THREE.AdditiveBlending}));
+    m.visible=false; scene.add(m); sparks.push({mesh:m,life:0,vx:0,vy:0,vz:0});
+  }
+}
+
+function burst(x,y,z,color){
+  let made=0;
+  for(const s of sparks){
+    if(s.life>0) continue;
+    s.mesh.position.set(x,y,z); s.mesh.material.color = new THREE.Color(color); s.mesh.material.opacity=1; s.mesh.visible=true;
+    const a=Math.random()*Math.PI*2, e=(Math.random()-0.5)*Math.PI; const sp=4+Math.random()*5;
+    s.vx=Math.cos(a)*Math.cos(e)*sp; s.vy=Math.sin(e)*sp; s.vz=Math.sin(a)*Math.cos(e)*sp;
+    s.life=0.6+Math.random()*0.3; if(++made>=16) break;
+  }
+}
+
+function makeDebris(){
+  const grp = new THREE.Group();
+  const isSat = Math.random() < 0.42;
+  if(isSat){
+    const core = new THREE.Mesh(new THREE.BoxGeometry(1,1,1.3), new THREE.MeshStandardMaterial({color:0xb9c4d6,metalness:.85,roughness:.3,emissive:0x16202e,emissiveIntensity:.4}));
+    grp.add(core);
+    for(let s of [-1,1]){
+      const panel = new THREE.Mesh(new THREE.BoxGeometry(1.8,0.06,0.9), new THREE.MeshStandardMaterial({color:0x2a4d8a,emissive:0x1a3a7a,emissiveIntensity:.7,metalness:.5,roughness:.4}));
+      panel.position.set(s*1.6,0,0); grp.add(panel);
+      const arm = new THREE.Mesh(new THREE.BoxGeometry(0.7,0.08,0.08), new THREE.MeshStandardMaterial({color:0x888,metalness:.7,roughness:.4}));
+      arm.position.set(s*0.85,0,0); grp.add(arm);
+    }
+    const dish = new THREE.Mesh(new THREE.SphereGeometry(0.4,16,12,0,6.3,0,1.4), new THREE.MeshStandardMaterial({color:0xe8edf5,metalness:.3,roughness:.6,side:THREE.DoubleSide}));
+    dish.rotation.x=-0.6; dish.position.set(0,0.7,0); grp.add(dish);
+    grp.userData.type="sat"; grp.userData.value=2;
+  } else {
+    const geo = new THREE.IcosahedronGeometry(0.8+Math.random()*0.4, 1);
+    const p = geo.attributes.position;
+    for(let i=0;i<p.count;i++){
+      const f=0.82+Math.random()*0.36; p.setXYZ(i, p.getX(i)*f, p.getY(i)*f, p.getZ(i)*f);
+    }
+    geo.computeVertexNormals();
+    const rock = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({color:0x8a6a52,roughness:.95,metalness:.05,emissive:0x2a1505,emissiveIntensity:.35,flatShading:true}));
+    grp.add(rock);
+    const trail = new THREE.Mesh(new THREE.ConeGeometry(0.55,2.4,14), new THREE.MeshBasicMaterial({color:COL.orange,transparent:true,opacity:.5,blending:THREE.AdditiveBlending}));
+    trail.rotation.x = Math.PI*0.5; trail.position.z = 1.6; grp.add(trail);
+    grp.userData.type="rock"; grp.userData.value=1;
+  }
+  const halo = new THREE.Sprite(new THREE.SpriteMaterial({map:makeRadialTexture(["rgba(255,210,74,.8)","rgba(255,140,60,.25)","rgba(0,0,0,0)"]),blending:THREE.AdditiveBlending,depthWrite:false,opacity:.55}));
+  halo.scale.set(4,4,1); grp.add(halo); grp.userData.halo = halo;
+  grp.userData.spin = {x:(Math.random()-.5)*2,y:(Math.random()-.5)*2,z:(Math.random()-.5)*2};
+  grp.visible=false; scene.add(grp); return grp;
+}
+
+function spawnDebris(){
+  let d = debris.find(o=>!o.active);
+  if(!d){ d = {mesh:makeDebris(), active:false}; debris.push(d); }
+  d.mesh.position.set((Math.random()*2-1)*BOUND.x, BOUND.y[0]+Math.random()*(BOUND.y[1]-BOUND.y[0]), -150);
+  const t = (Date.now()-gameStart)/1000;
+  d.speed = 26 + Math.min(t*0.55, 28) + Math.random()*8;
+  d.resolved=false; d.active=true; d.mesh.visible=true; d.mesh.scale.setScalar(1);
+}
+
+function setupInput(){
+  addEventListener("pointermove", e=>{
+    if(inputMode!=="mouse" || state!==STATE.PLAY) return;
+    const nx = (e.clientX/W)*2-1, ny = -((e.clientY/H)*2-1);
+    robotTarget.x = nx*BOUND.x; robotTarget.y = BOUND.y[0] + (ny*0.5+0.5)*(BOUND.y[1]-BOUND.y[0]);
+  });
+  addEventListener("pointerdown", ()=>{
+    if(inputMode==="gyro" && gyroLatest.gamma!==null) gyroNeutral = {beta:gyroLatest.beta, gamma:gyroLatest.gamma};
+  });
+  const keys={};
+  addEventListener("keydown",e=>{keys[e.key.toLowerCase()]=true;});
+  addEventListener("keyup",e=>{keys[e.key.toLowerCase()]=false;});
+  setInterval(()=>{
+    if(state!==STATE.PLAY) return;
+    const s=0.55;
+    if(keys["arrowleft"]||keys["a"])  robotTarget.x=Math.max(-BOUND.x,robotTarget.x-s);
+    if(keys["arrowright"]||keys["d"]) robotTarget.x=Math.min( BOUND.x,robotTarget.x+s);
+    if(keys["arrowup"]||keys["w"])    robotTarget.y=Math.min(BOUND.y[1],robotTarget.y+s);
+    if(keys["arrowdown"]||keys["s"])  robotTarget.y=Math.max(BOUND.y[0],robotTarget.y-s);
+  },16);
+  addEventListener("deviceorientation", e=>{
+    if(e.beta===null && e.gamma===null) return;
+    gyroLatest.beta=e.beta; gyroLatest.gamma=e.gamma;
+    if(inputMode!=="gyro" || state!==STATE.PLAY) return;
+    if(!gyroNeutral) gyroNeutral={beta:e.beta,gamma:e.gamma};
+    let dg = e.gamma - gyroNeutral.gamma;
+    let db = e.beta  - gyroNeutral.beta;
+    const nx = Math.max(-1,Math.min(1, dg/26));
+    const ny = Math.max(-1,Math.min(1, db/22));
+    robotTarget.x = nx*BOUND.x; robotTarget.y = BOUND.y[0] + (ny*0.5+0.5)*(BOUND.y[1]-BOUND.y[0]);
+  });
+}
+
+function requestGyro(){
+  return new Promise(res=>{
+    if(typeof DeviceOrientationEvent!=="undefined" && typeof DeviceOrientationEvent.requestPermission==="function"){
+      DeviceOrientationEvent.requestPermission().then(p=> res(p==="granted")).catch(()=>res(false));
+    } else if(typeof DeviceOrientationEvent!=="undefined" && ("ontouchstart" in window)){
+      res(true);
+    } else {
+      res(false);
+    }
+  });
+}
+
+let actx=null;
+function beep(freq,dur,type,vol){
+  try{
+    if(!actx) actx = new (window.AudioContext||window.webkitAudioContext)();
+    const o=actx.createOscillator(), g=actx.createGain();
+    o.type=type||"sine"; o.frequency.value=freq;
+    g.gain.setValueAtTime(vol||0.12, actx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.0001, actx.currentTime+dur);
+    o.connect(g); g.connect(actx.destination);
+    o.start(); o.stop(actx.currentTime+dur);
+  }catch(_){}
+}
+function catchSound(c){ beep(520+c*60,0.12,"triangle",0.14); setTimeout(()=>beep(780+c*70,0.1,"sine",0.1),60); }
+function missSound(){ beep(150,0.18,"sawtooth",0.1); }
+
+function startGame(mode){
+  inputMode = mode; gyroNeutral = null; state = STATE.PLAY;
+  score=0; collected=0; attempts=0; combo=0; bestCombo=0;
+  timeLeft=60; gameStart=Date.now(); lastSpawn=0; spawnGap=1.15;
+  robotTarget.x=0; robotTarget.y=0.5; robotPos.x=0; robotPos.y=0.5;
+  debris.forEach(d=>{d.active=false; d.mesh.visible=false;});
+  elScore.textContent="0"; elTime.textContent="60"; elTimePanel.classList.remove("low");
+  $("start").classList.add("hidden"); $("result").classList.add("hidden");
+  setHint(mode);
+  if(mode==="gyro"){
+    setTimeout(()=>{ if(state===STATE.PLAY && inputMode==="gyro" && gyroLatest.gamma===null){ inputMode="mouse"; setHint("mouse", true); } }, 1400);
+  }
+  if(actx && actx.state==="suspended") actx.resume();
+}
+
+const isTouch = ("ontouchstart" in window) || navigator.maxTouchPoints>0;
+function setHint(mode, fellBack){
+  if(mode==="gyro") elHint.innerHTML = "傾斜平板飛行 · <b>撳一下畫面</b> 重新校準中心 · 對準瞄準框爪實";
+  else if(fellBack) elHint.innerHTML = "未收到陀螺儀訊號 · 改用 <b>拖動手指</b> 操控機械人";
+  else if(isTouch) elHint.innerHTML = "<b>拖動手指</b> 操控機械人 · 對準瞄準框爪實垃圾";
+  else elHint.innerHTML = "<b>滑鼠移動</b> 或 <b>WASD / 方向鍵</b> 操控機械人";
+}
+
+function endGame(){
+  state = STATE.OVER;
+  const acc = attempts>0 ? Math.round(collected/attempts*100) : 0;
+  $("final-score").textContent = score;
+  $("r-count").textContent = collected;
+  $("r-combo").textContent = bestCombo;
+  $("r-acc").textContent = acc+"%";
+  $("rank-text").innerHTML = rankMessage(score, acc);
+  $("result").classList.remove("hidden");
+
+  const scriptURL = 'https://script.google.com/macros/s/AKfycbwHKY-YDXziCb0eCZtW-GQ9MGUQshKIIJk1qJgX7TPqTL1YwThCrvCld5YNSH9CSwpPew/exec'; 
+  
+  const timeSpent = 60 - timeLeft; 
+  
+  const data = {
+      gameName: '太空垃圾', 
+      studentClass: studentClass,
+      studentId: studentId,
+      playDate: new Date().toLocaleDateString('zh-HK'), 
+      playTime: Math.round(timeSpent) + "秒", 
+      score: score
+  };
+
+  fetch(scriptURL, {
+      method: 'POST',
+      body: JSON.stringify(data),
+      headers: {
+          'Content-Type': 'text/plain;charset=utf-8',
+      }
+  })
+  .then(response => response.json())
+  .then(result => console.log('成績上傳成功：', result))
+  .catch(error => console.error('成績上傳失敗：', error));
+}
+
+function rankMessage(s, acc){
+  let title, msg;
+  if(s>=900){ title="星際隊長"; msg="反應同體能都頂呱呱!太空總署即刻請你。"; }
+  else if(s>=550){ title="王牌回收員"; msg="身手敏捷,軌道俾你掃得乾乾淨淨。"; }
+  else if(s>=280){ title="見習太空人"; msg="唔錯!再快手啲、郁多啲身就更掂。"; }
+  else { title="地面學員"; msg="航天員每日都要操練 —— 多做運動,反應會越練越快!"; }
+  return `評級:<b>${title}</b><br>${msg}`;
+}
+
+function animate(){
+  requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), 0.05);
+  const tNow = clock.elapsedTime;
+  if(stars) stars.rotation.y += dt*0.006;
+  if(earth) earth.rotation.y += dt*0.03;
+  if(nebula) nebula.rotation.z += dt*0.004;
+
+  if(robot){
+    robotPos.x += (robotTarget.x-robotPos.x)*Math.min(1,dt*7);
+    robotPos.y += (robotTarget.y-robotPos.y)*Math.min(1,dt*7);
+    robot.position.x = robotPos.x; robot.position.y = robotPos.y + Math.sin(tNow*1.6)*0.12; 
+    robot.rotation.z = (robotTarget.x-robotPos.x)*-0.06; robot.rotation.x = (robotTarget.y-robotPos.y)*0.05;
+    if(robotGlow) robotGlow.material.emissiveIntensity = 1.2+Math.sin(tNow*4)*0.3;
+    robot.traverse(o=>{ if(o.userData.flame) o.scale.y = 0.7+Math.random()*0.6; });
+    camera.position.x += (robotPos.x*0.35 - camera.position.x)*Math.min(1,dt*4);
+    camera.position.y += (4 + robotPos.y*0.28 - camera.position.y)*Math.min(1,dt*4);
+    camera.lookAt(robotPos.x*0.5, robotPos.y*0.4+0.6, -34);
+  }
+
+  if(state===STATE.PLAY){
+    timeLeft = Math.max(0, 60-(Date.now()-gameStart)/1000);
+    elTime.textContent = Math.ceil(timeLeft);
+    if(timeLeft<=10) elTimePanel.classList.add("low");
+    if(timeLeft<=0){ endGame(); }
+
+    const elapsed=(Date.now()-gameStart)/1000;
+    spawnGap = Math.max(0.42, 1.15 - elapsed*0.012);
+    if((Date.now()-lastSpawn)/1000 > spawnGap){ spawnDebris(); lastSpawn=Date.now(); }
+
+    updateDebris(dt); updateReticle(); decayClaw(dt);
+  } else { elReticle.style.opacity = 0; }
+  updateSparks(dt); renderer.render(scene,camera);
+}
+
+function updateDebris(dt){
+  for(const d of debris){
+    if(!d.active) continue;
+    const m = d.mesh; m.position.z += d.speed*dt;
+    const sp=m.userData.spin; m.rotation.x+=sp.x*dt; m.rotation.y+=sp.y*dt; m.rotation.z+=sp.z*dt;
+    if(!d.resolved && m.position.z >= CATCH_Z){
+      d.resolved=true; attempts++;
+      const dx=m.position.x-robot.position.x, dy=m.position.y-robot.position.y;
+      if(Math.hypot(dx,dy) < CATCH_RADIUS){
+        const val=m.userData.value; combo++; bestCombo=Math.max(bestCombo,combo);
+        const mult=1+Math.floor((combo-1)/3); score+=val*10*mult; collected++; elScore.textContent=score;
+        burst(m.position.x,m.position.y,m.position.z, m.userData.type==="sat"?COL.cyan:COL.hazard);
+        catchSound(Math.min(combo,6)); snapClaw();
+        if(combo>=2) showCombo(combo, mult); retire(d);
+      } else { if(combo>0){ combo=0; missSound(); } }
+    }
+    if(m.position.z > 18) retire(d);
+  }
+}
+
+function retire(d){ d.active=false; d.resolved=false; d.mesh.visible=false; d.mesh.position.z=-300; }
+let clawT=0; function snapClaw(){ clawT=1; }
+function decayClaw(dt){
+  clawT=Math.max(0,clawT-dt*4); const close = clawT*0.5;
+  [claw.l,claw.r].forEach(arm=>{
+    if(!arm) return;
+    arm.userData.pincer.children.forEach((f,i)=>{ f.rotation.z = (i===0?1:-1)*(0.35 - close); });
+  });
+}
+
+function showCombo(c, mult){
+  elCombo.innerHTML = `×${c} 連擊<small>分數 ×${mult}</small>`;
+  elCombo.style.transition="none"; elCombo.style.opacity="1"; elCombo.style.transform="translate(-50%,-50%) scale(1.15)";
+  requestAnimationFrame(()=>{
+    elCombo.style.transition="all .5s ease"; elCombo.style.opacity="0"; elCombo.style.transform="translate(-50%,-50%) scale(.7)";
+  });
+}
+
+const _v = new THREE.Vector3();
+function updateReticle(){
+  let best=null, bestZ=-Infinity;
+  for(const d of debris){
+    if(!d.active||d.resolved) continue;
+    if(d.mesh.position.z > bestZ && d.mesh.position.z < CATCH_Z){ bestZ=d.mesh.position.z; best=d; }
+  }
+  if(!best){ elReticle.style.opacity=0; return; }
+  _v.copy(best.mesh.position).project(camera);
+  if(_v.z>1){ elReticle.style.opacity=0; return; }
+  const x=(_v.x*0.5+0.5)*W, y=(-_v.y*0.5+0.5)*H;
+  elReticle.style.left=x+"px"; elReticle.style.top=y+"px"; elReticle.style.opacity=1;
+  const dx=best.mesh.position.x-robot.position.x, dy=best.mesh.position.y-robot.position.y;
+  if(Math.hypot(dx,dy)<CATCH_RADIUS) elReticle.classList.add("lock"); else elReticle.classList.remove("lock");
+  const prox = 1+(best.mesh.position.z+150)/150*0.6;
+  elReticle.querySelector("svg").style.transform=`scale(${prox})`;
+}
+
+function updateSparks(dt){
+  for(const s of sparks){
+    if(s.life<=0) continue; s.life-=dt;
+    s.mesh.position.x+=s.vx*dt; s.mesh.position.y+=s.vy*dt; s.mesh.position.z+=s.vz*dt;
+    s.vx*=0.92; s.vy*=0.92; s.vz*=0.92;
+    s.mesh.material.opacity=Math.max(0,s.life/0.9); s.mesh.scale.setScalar(0.4+s.life);
+    if(s.life<=0) s.mesh.visible=false;
+  }
+}
+
+function onResize(){ W=innerWidth; H=innerHeight; camera.aspect=W/H; camera.updateProjectionMatrix(); renderer.setSize(W,H); }
+
+function makeRadialTexture(stops){
+  const c=document.createElement("canvas"); c.width=c.height=128; const x=c.getContext("2d");
+  const g=x.createRadialGradient(64,64,0,64,64,64); stops.forEach((s,i)=>g.addColorStop(i/(stops.length-1),s));
+  x.fillStyle=g; x.fillRect(0,0,128,128); return new THREE.CanvasTexture(c);
+}
+
+function makeEarthTexture(){
+  const c=document.createElement("canvas"); c.width=512; c.height=256; const x=c.getContext("2d");
+  x.fillStyle="#1a4f9e"; x.fillRect(0,0,512,256); x.fillStyle="#2f7d4f";
+  for(let i=0;i<26;i++){
+    const px=Math.random()*512, py=Math.random()*256, r=18+Math.random()*52;
+    x.beginPath();
+    for(let a=0;a<7;a++){
+      const ang=a/7*Math.PI*2, rr=r*(0.6+Math.random()*0.6);
+      const xx=px+Math.cos(ang)*rr, yy=py+Math.sin(ang)*rr;
+      a===0?x.moveTo(xx,yy):x.lineTo(xx,yy);
+    }
+    x.closePath(); x.fill();
+  }
+  x.fillStyle="rgba(255,255,255,.32)";
+  for(let i=0;i<40;i++){ x.beginPath(); x.ellipse(Math.random()*512,Math.random()*256,14+Math.random()*30,6+Math.random()*12,0,0,7); x.fill(); }
+  return new THREE.CanvasTexture(c);
+}
+
+function bindUI(){
+  $("start-btn").addEventListener("click", async ()=>{
+    const ok = await requestGyro(); startGame(ok && gyroLatest.gamma!==null ? "gyro" : (ok ? "gyro" : "mouse"));
+  });
+  $("skip-gyro").addEventListener("click", ()=> startGame("mouse"));
+  $("retry-btn").addEventListener("click", ()=>{ $("result").classList.add("hidden"); $("start").classList.remove("hidden"); state=STATE.MENU; });
+}
+
+initThree(); setupInput(); bindUI(); animate();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,955 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>🚀 太空人執行李 — 安檢挑戰</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  * { -webkit-tap-highlight-color: transparent; touch-action: manipulation; box-sizing: border-box; }
+  html, body { margin:0; padding:0; overflow:hidden; height:100%; }
+  body {
+    background: radial-gradient(ellipse at 50% -10%, #1e2b5e 0%, #0a0f29 45%, #04060f 100%);
+    font-family: 'Segoe UI', 'PingFang TC', 'Microsoft JhengHei', sans-serif;
+    color:#e2e8f0; user-select:none; -webkit-user-select:none;
+  }
+  #game-canvas { position:absolute; inset:0; width:100vw; height:100vh; z-index:1; display:block; }
+  #ui-layer { position:absolute; inset:0; z-index:10; pointer-events:none; }
+
+  .panel {
+    background: linear-gradient(160deg, rgba(23,33,68,0.94), rgba(11,16,40,0.96));
+    border:1px solid rgba(99,179,237,0.4);
+    border-radius:22px;
+    box-shadow:0 10px 50px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.07);
+    pointer-events:auto; backdrop-filter: blur(6px);
+  }
+  .title-glow { text-shadow:0 0 18px rgba(56,189,248,0.6); }
+
+  .btn { border:none; border-radius:14px; cursor:pointer; font-weight:800; transition:transform .08s, filter .15s; }
+  .btn:active { transform:scale(0.96); }
+  .btn-cyan   { background:linear-gradient(135deg,#22d3ee,#0ea5e9); color:#04233a; box-shadow:0 6px 20px rgba(14,165,233,0.4); }
+  .btn-indigo { background:linear-gradient(135deg,#818cf8,#6366f1); color:#fff; box-shadow:0 6px 20px rgba(99,102,241,0.4); }
+  .btn-green  { background:linear-gradient(135deg,#34d399,#10b981); color:#04261a; box-shadow:0 6px 20px rgba(16,185,129,0.4); }
+  .btn-ghost  { background:rgba(148,163,184,0.16); color:#e2e8f0; border:1px solid rgba(148,163,184,0.35); }
+  .btn-red    { background:linear-gradient(135deg,#f87171,#ef4444); color:#fff; box-shadow:0 6px 20px rgba(239,68,68,0.4); }
+
+  .modal-overlay { position:fixed; inset:0; background:rgba(2,4,12,0.74); z-index:100; display:flex; align-items:center; justify-content:center; padding:16px; backdrop-filter:blur(3px); }
+  .modal-box { width:100%; max-width:380px; padding:26px; }
+
+  .lb-table { width:100%; border-collapse:collapse; font-size:0.95rem; }
+  .lb-table th { background:rgba(51,65,85,0.6); padding:8px 10px; text-align:left; font-weight:800; color:#cbd5e1; }
+  .lb-table td { padding:8px 10px; border-bottom:1px solid rgba(71,85,105,0.4); }
+  .lb-table tr.me td { background:rgba(34,211,238,0.16); font-weight:800; color:#a5f3fc; }
+
+  .hud-chip { background:rgba(11,16,40,0.82); border:1px solid rgba(99,179,237,0.32); border-radius:14px; padding:8px 14px; box-shadow:0 4px 16px rgba(0,0,0,0.45); }
+
+  .shake { animation: shake 0.45s cubic-bezier(.36,.07,.19,.97) both; }
+  @keyframes shake { 10%,90%{transform:translate3d(-2px,2px,0)} 20%,80%{transform:translate3d(4px,-4px,0)} 30%,50%,70%{transform:translate3d(-7px,5px,0)} 40%,60%{transform:translate3d(7px,-5px,0)} }
+  .hidden { display:none !important; }
+  .flash { animation: flash 0.7s infinite; }
+  @keyframes flash { 0%,100%{filter:brightness(1)} 50%{filter:brightness(1.4)} }
+
+  .action-btn {
+    position:absolute; bottom:26px; left:50%; transform:translateX(-50%);
+    pointer-events:auto; z-index:25; min-width:96px; height:96px; border-radius:50%;
+    border:3px solid rgba(255,255,255,0.5); font-weight:900; font-size:0.95rem;
+    cursor:pointer; display:flex; align-items:center; justify-content:center; line-height:1.15; text-align:center;
+  }
+  #fire-btn { background:radial-gradient(circle at 35% 30%, #67e8f9, #0891b2); color:#04233a; box-shadow:0 8px 26px rgba(8,145,178,0.6), inset 0 2px 4px rgba(255,255,255,0.4); }
+  #fire-btn:active { transform:translateX(-50%) scale(0.9); }
+  #fire-btn.busy { filter:grayscale(0.7) brightness(0.7); }
+  #eject-btn { background:radial-gradient(circle at 35% 30%, #fca5a5, #dc2626); color:#fff; box-shadow:0 8px 30px rgba(220,38,38,0.7), inset 0 2px 4px rgba(255,255,255,0.4); }
+  #eject-btn:active { transform:translateX(-50%) scale(0.9); }
+
+  #toast { position:absolute; top:46%; left:50%; transform:translate(-50%,-50%); z-index:40; pointer-events:none; max-width:360px; width:calc(100% - 36px); }
+  .toast-card { border-radius:18px; padding:16px 18px; text-align:center; font-weight:700; box-shadow:0 10px 40px rgba(0,0,0,0.6); animation:popIn .25s; }
+  @keyframes popIn { from{transform:scale(0.8);opacity:0} to{transform:scale(1);opacity:1} }
+
+  @media (max-width:640px){
+    #hud { padding:6px !important; gap:4px !important; }
+    .hud-chip { padding:6px 10px; }
+  }
+  .scrolly { max-height:340px; overflow-y:auto; }
+  .scrolly::-webkit-scrollbar{ width:6px } .scrolly::-webkit-scrollbar-thumb{ background:rgba(99,179,237,0.4); border-radius:3px }
+</style>
+</head>
+<body>
+
+<canvas id="game-canvas"></canvas>
+
+<div id="ui-layer">
+
+  <div id="hud" class="absolute top-0 left-0 w-full p-3 flex justify-between items-start gap-2 hidden" style="pointer-events:none;">
+    <button id="back-home-btn" class="btn btn-ghost" style="pointer-events:auto; padding:9px 14px; font-size:0.95rem;">← 返回</button>
+
+    <div id="hud-endless" class="hud-chip text-center hidden">
+      <div style="font-size:0.78rem;color:#94a3b8;">得分</div>
+      <div style="font-size:1.5rem;font-weight:900;color:#fbbf24;"><span id="hud-score">0</span></div>
+      <div style="font-size:0.82rem;font-weight:800;color:#34d399;">連擊 x<span id="hud-combo">1</span> 🔥</div>
+    </div>
+
+    <div id="hud-campaign" class="hud-chip text-center hidden">
+      <div style="font-size:0.78rem;color:#a5b4fc;">關卡模式</div>
+      <div style="font-size:1.15rem;font-weight:900;color:#fde68a;">第 <span id="hud-cp-level">1</span>/5 關</div>
+      <div style="font-size:0.88rem;color:#cbd5e1;">安全 <span id="hud-cp-collect" style="color:#67e8f9;font-weight:800;">0/3</span></div>
+      <div style="font-size:0.88rem;color:#fbbf24;">分數 <span id="hud-cp-score">0</span></div>
+    </div>
+
+    <div id="hud-tutorial" class="hud-chip text-center hidden">
+      <div style="font-size:0.78rem;color:#86efac;">教學進度</div>
+      <div style="font-size:1.15rem;font-weight:900;color:#34d399;">第 <span id="hud-tut-step">1</span>/5 課</div>
+      <div style="font-size:0.88rem;color:#cbd5e1;">完成 <span id="hud-tut-collect" style="color:#67e8f9;font-weight:800;">0/3</span></div>
+    </div>
+
+    <div id="hud-time-wrap" class="hud-chip text-center hidden">
+      <div style="font-size:0.78rem;color:#94a3b8;">時間</div>
+      <div id="hud-time" style="font-size:1.6rem;font-weight:900;color:#fff;">60s</div>
+    </div>
+  </div>
+
+  <div id="mission-card" class="panel hidden absolute" style="top:148px; right:12px; width:268px; padding:15px; pointer-events:auto;">
+    <div id="mission-badge" style="background:linear-gradient(135deg,#6366f1,#22d3ee);color:#fff;text-align:center;font-weight:800;padding:6px;font-size:0.95rem;border-radius:10px;margin-bottom:10px;">任務</div>
+    <p id="mission-text" style="font-size:0.95rem;line-height:1.7;color:#e2e8f0;"></p>
+  </div>
+
+  <div id="toast" class="hidden"></div>
+
+  <div id="powerup-bar" class="absolute hidden" style="top:148px; left:12px; display:flex; flex-direction:column; gap:6px; pointer-events:none; z-index:12;"></div>
+
+  <div id="ui-center" class="w-full h-full flex items-center justify-center">
+    <div id="start-panel" class="panel" style="padding:30px; max-width:380px; width:calc(100% - 32px); margin:16px; text-align:center; pointer-events:auto;">
+      <div style="font-size:3rem; margin-bottom:2px;">🚀🧑‍🚀</div>
+      <h1 class="title-glow" style="font-size:1.8rem;font-weight:900;color:#67e8f9;margin-bottom:6px;">太空人執行李</h1>
+      <p style="color:#cbd5e1;font-size:1rem;margin-bottom:20px;">用機械臂，只把<b style="color:#34d399;">安全行李</b>送上太空！</p>
+      <div style="display:flex;flex-direction:column;gap:11px;">
+        <button id="campaign-btn" class="btn btn-indigo" style="padding:16px;font-size:1.15rem;">📋 關卡模式（5 關）</button>
+        <button id="endless-btn"  class="btn btn-cyan"   style="padding:16px;font-size:1.15rem;">♾️ 無盡模式</button>
+        <button id="tutorial-btn" class="btn btn-green"  style="padding:14px;font-size:1.05rem;">🎓 教學模式</button>
+        <button id="leaderboard-btn" class="btn btn-ghost" style="padding:13px;font-size:1rem;">🏆 雲端排行榜</button>
+      </div>
+      <p style="font-size:0.85rem;color:#94a3b8;margin-top:16px;">新手先玩教學模式，認識違禁品</p>
+    </div>
+  </div>
+
+  <button id="fire-btn" class="action-btn hidden">🦾<br>發射</button>
+  <button id="eject-btn" class="action-btn hidden flash">🗑️<br>丟棄</button>
+
+  <div id="result-overlay" class="modal-overlay hidden">
+    <div class="panel modal-box" style="max-width:340px;text-align:center;">
+      <h2 id="result-title" style="font-size:1.9rem;font-weight:900;margin-bottom:6px;"></h2>
+      <p id="result-sub" style="font-size:1.2rem;font-weight:800;margin-bottom:14px;"></p>
+      <div id="result-body" style="background:rgba(15,23,42,0.6);border:1px solid rgba(99,179,237,0.25);border-radius:12px;padding:14px;font-size:1rem;color:#e2e8f0;margin-bottom:18px;line-height:1.7;"></div>
+      <button id="next-btn" class="btn btn-cyan" style="width:100%;padding:16px;font-size:1.1rem;">繼續</button>
+    </div>
+  </div>
+
+  <div id="gameover-overlay" class="modal-overlay hidden">
+    <div class="panel modal-box" style="max-width:340px;text-align:center;border-color:rgba(248,113,113,0.5);">
+      <div style="font-size:2.6rem;">⏱️</div>
+      <h2 style="font-size:1.8rem;font-weight:900;color:#f87171;margin-bottom:12px;">時間到！</h2>
+      <p style="color:#cbd5e1;font-size:0.95rem;">最終得分</p>
+      <p id="final-score" style="font-size:3rem;font-weight:900;color:#fbbf24;margin-bottom:10px;">0</p>
+      <p style="color:#cbd5e1;font-size:0.95rem;">安全行李 <span id="final-safe" style="color:#34d399;font-weight:800;">0</span> 件 ｜ 失誤 <span id="final-bad" style="color:#f87171;font-weight:800;">0</span> 次</p>
+      <button id="go-restart-btn" class="btn btn-red" style="width:100%;padding:16px;font-size:1.05rem;margin-top:20px;">返回主畫面</button>
+    </div>
+  </div>
+
+  <div id="campaign-complete-overlay" class="modal-overlay hidden">
+    <div class="panel modal-box" style="max-width:340px;text-align:center;border-color:rgba(251,191,36,0.5);">
+      <div style="font-size:3rem;">🏆🛰️</div>
+      <h2 style="font-size:1.6rem;font-weight:900;color:#fde68a;margin-bottom:8px;">任務完成！</h2>
+      <p style="color:#cbd5e1;font-size:0.95rem;">最終分數</p>
+      <p id="cp-score" style="font-size:2.6rem;font-weight:900;color:#fbbf24;margin-bottom:6px;">0</p>
+      <p style="color:#cbd5e1;font-size:0.95rem;">通過 <span id="cp-passed" style="color:#34d399;font-weight:800;">0/5</span> 關 ｜ ⏱ <span id="cp-total-time" style="color:#67e8f9;font-weight:800;">0s</span></p>
+      <button id="cp-view-lb-btn" class="btn btn-indigo" style="width:100%;padding:15px;font-size:1.05rem;margin:18px 0 8px;">🏆 查看排行榜</button>
+      <button id="cp-restart-btn" class="btn btn-ghost" style="width:100%;padding:13px;">返回主畫面</button>
+    </div>
+  </div>
+
+</div>
+
+<div id="lb-modal" class="modal-overlay hidden">
+  <div class="panel modal-box" style="max-width:440px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+      <h2 style="font-size:1.3rem;font-weight:900;color:#67e8f9;">🏆 雲端排行榜</h2>
+      <button id="lb-close-btn" class="btn" style="background:none;font-size:1.4rem;color:#94a3b8;padding:0 6px;">✕</button>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:12px;">
+      <button id="lb-tab-campaign" class="btn" style="flex:1;padding:10px;font-size:0.95rem;">📋 關卡模式</button>
+      <button id="lb-tab-endless"  class="btn" style="flex:1;padding:10px;font-size:0.95rem;">♾️ 無盡模式</button>
+    </div>
+    <div id="lb-content" class="scrolly">
+      <p style="color:#94a3b8;font-size:0.95rem;text-align:center;padding:24px 0;">載入中...</p>
+    </div>
+    <button id="lb-back-btn" class="btn btn-ghost" style="width:100%;padding:13px;margin-top:12px;">返回</button>
+  </div>
+</div>
+
+<div id="return-confirm-modal" class="modal-overlay hidden">
+  <div class="panel modal-box" style="max-width:320px;text-align:center;">
+    <div style="font-size:2.2rem;">🏠</div>
+    <h3 style="font-size:1.3rem;font-weight:900;margin:8px 0;">返回主畫面？</h3>
+    <p style="color:#cbd5e1;font-size:0.95rem;margin-bottom:18px;">目前進度不會儲存。</p>
+    <button id="confirm-return-yes" class="btn btn-cyan" style="width:100%;padding:15px;margin-bottom:8px;font-size:1.05rem;">確認返回</button>
+    <button id="confirm-return-no" class="btn btn-ghost" style="width:100%;padding:13px;">繼續遊戲</button>
+  </div>
+</div>
+
+<div id="lesson-modal" class="modal-overlay hidden">
+  <div class="panel modal-box" style="max-width:380px;">
+    <div id="lesson-emoji" style="font-size:3rem;text-align:center;">🧂</div>
+    <h2 id="lesson-title" style="font-size:1.4rem;font-weight:900;color:#67e8f9;text-align:center;margin-bottom:10px;"></h2>
+    <div id="lesson-body" style="background:rgba(15,23,42,0.6);border:1px solid rgba(99,179,237,0.25);border-radius:12px;padding:16px;font-size:1.05rem;color:#e2e8f0;line-height:1.8;margin-bottom:18px;"></div>
+    <button id="lesson-start-btn" class="btn btn-green" style="width:100%;padding:15px;font-size:1.1rem;">開始練習 →</button>
+  </div>
+</div>
+
+<script>
+// 【新增】接收主網頁傳來的學生資料
+const urlParams = new URLSearchParams(window.location.search);
+const studentClass = urlParams.get('class') || '未設定班別';
+const studentId = urlParams.get('id') || '未設定學號';
+
+const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwHKY-YDXziCb0eCZtW-GQ9MGUQshKIIJk1qJgX7TPqTL1YwThCrvCld5YNSH9CSwpPew/exec"; 
+
+const canvas = document.getElementById('game-canvas');
+const ctx = canvas.getContext('2d', { alpha: false });
+let W=0,H=0,DPR=1;
+
+let bgGrd = null;
+let bgRadialGrd = null;
+let visorGrd = null;
+let lastPowerSec = -1;
+
+let mode='idle', running=false, lastTime=0;
+let playerClass='', playerNumber='';
+
+let score=0, combo=1, safeCount=0, badCount=0;
+let timeLeft=60, timerInterval=null, sessionStart=0;
+
+let campaignStep=0, campaignPassed=0, campaignScore=0;
+let campaignStartTime=0, campaignTimerInterval=null, campaignAnswers=[];
+let cpTargetSafe=3, cpCollected=0;
+
+let tutStep=0, tutCollected=0, tutNeed=3;
+
+let items=[], holdingItem=null, armPaused=false;
+let stars=[], audioCtx=null;
+
+let obstacles=[];
+let scannerUntil=0, magnetUntil=0, shieldActive=false, magnetTarget=null;
+let nowMs=0, lastPowerBar='';
+const POWERUPS=[
+  {power:'scan',  emoji:'🔍', name:'掃描器',   color:'#22d3ee'},
+  {power:'shield',emoji:'🛡️', name:'護盾',     color:'#a78bfa'},
+  {power:'magnet',emoji:'🧲', name:'磁力手套', color:'#f472b6'},
+];
+const SPEED_TIERS=[
+  {p:0.55, f:0.85, bonus:1,   tag:''},
+  {p:0.30, f:1.7,  bonus:1.5, tag:'快'},
+  {p:0.15, f:2.6,  bonus:2,   tag:'極速'},
+];
+function resetPowers(){ scannerUntil=0; magnetUntil=0; shieldActive=false; magnetTarget=null; }
+
+const arm = {
+  pivotX:0, pivotY:70,
+  angle:0, maxAngle:1.45, swingSpeed:1.4, dir:1,
+  state:'swing', length:64, minLength:64, maxLength:0, extendSpeed:1100,
+  grabbed:null
+};
+
+const FORBIDDEN = [
+  { emoji:'🧂', name:'鹽和胡椒', cat:'固體調味料', reason:'小顆粒會亂飄，跑進眼睛或塞住過濾器。' },
+  { emoji:'🍟', name:'洋芋片',   cat:'掉屑食物',   reason:'碎屑會亂飛，被吸入或卡進機器。' },
+  { emoji:'🍪', name:'餅乾',     cat:'掉屑食物',   reason:'會掉渣，碎屑在艙內亂飛很危險。' },
+  { emoji:'🥖', name:'麵包',     cat:'掉屑食物',   reason:'麵包屑四處飄，會弄壞儀器。' },
+  { emoji:'🍿', name:'爆米花',   cat:'掉屑食物',   reason:'碎屑超多，會到處亂飛。' },
+  { emoji:'🥨', name:'脆餅',     cat:'掉屑食物',   reason:'又脆又掉屑，不能帶上太空。' },
+  { emoji:'🥤', name:'汽水',     cat:'碳酸飲料',   reason:'氣泡困在肚子裡，不能打嗝會想吐。' },
+  { emoji:'🍾', name:'香檳',     cat:'碳酸飲料',   reason:'有氣泡又加壓，太空中很危險。' },
+  { emoji:'🧴', name:'噴霧香水', cat:'易燃揮發',   reason:'易燃，還會污染艙內空氣。' },
+  { emoji:'💅', name:'指甲油',   cat:'易燃揮發',   reason:'揮發化學物易燃又污染空氣。' },
+  { emoji:'🕯️', name:'蠟燭',     cat:'易燃揮發',   reason:'明火在太空艙極度危險。' },
+  { emoji:'🧪', name:'化學藥劑', cat:'易燃揮發',   reason:'易燃揮發，可能引起火災。' },
+  { emoji:'🔧', name:'扳手',     cat:'金屬銳器',   reason:'會漂浮亂撞，砸壞儀器或窗戶。' },
+  { emoji:'✂️', name:'剪刀',     cat:'金屬銳器',   reason:'銳利又會亂飄，容易傷人。' },
+  { emoji:'🔪', name:'刀子',     cat:'金屬銳器',   reason:'銳利刀具漂浮非常危險。' },
+  { emoji:'🔨', name:'錘子',     cat:'金屬銳器',   reason:'沉重金屬亂飄會撞壞東西。' },
+  { emoji:'🪛', name:'螺絲起子', cat:'金屬銳器',   reason:'尖銳工具漂浮很危險。' },
+];
+const SAFE = [
+  { emoji:'🧃', name:'密封飲料', reason:'密封吸管包，液體不會外漏。' },
+  { emoji:'📱', name:'平板電腦', reason:'固體裝置，工作聯絡都靠它。' },
+  { emoji:'🎧', name:'耳機',     reason:'通訊聽歌都安全。' },
+  { emoji:'🧸', name:'絨毛玩偶', reason:'常當零重力指示物，安全又療癒。' },
+  { emoji:'📷', name:'相機',     reason:'記錄太空美景，很安全。' },
+  { emoji:'🖊️', name:'太空筆',   reason:'特製加壓筆，零重力能寫字。' },
+  { emoji:'🌱', name:'種子實驗', reason:'密封植物實驗，很常見。' },
+  { emoji:'💊', name:'醫療藥包', reason:'密封藥品，保健必需。' },
+  { emoji:'🪥', name:'牙刷',     reason:'個人衛生用品，安全。' },
+  { emoji:'🧦', name:'衣物',     reason:'柔軟不掉屑，可安心帶。' },
+  { emoji:'🧤', name:'手套',     reason:'保暖防護，安全無虞。' },
+  { emoji:'🥽', name:'護目鏡',   reason:'保護眼睛，固體很安全。' },
+  { emoji:'⌚', name:'智慧手錶', reason:'密封電子裝置，安全。' },
+  { emoji:'🎮', name:'遊戲手把', reason:'休閒娛樂，固體安全。' },
+  { emoji:'🔦', name:'手電筒',   reason:'密封電子工具，安全。' },
+];
+
+const CAMPAIGN_LEVELS = [
+  { time:40, density:6,  swing:1.2, safeRatio:0.6,  meteors:0, junk:0 },
+  { time:40, density:7,  swing:1.4, safeRatio:0.5,  meteors:1, junk:0 },
+  { time:38, density:8,  swing:1.6, safeRatio:0.45, meteors:1, junk:1 },
+  { time:36, density:9,  swing:1.8, safeRatio:0.4,  meteors:2, junk:1 },
+  { time:34, density:10, swing:2.0, safeRatio:0.38, meteors:2, junk:2 },
+];
+
+const TUTORIAL_LESSONS = [
+  { emoji:'🧂', title:'第 1 課：固體調味料', forbid:['🧂'], body:'鹽和胡椒這種<b style="color:#fca5a5;">固體顆粒</b>，在太空會亂飄，跑進眼睛或塞住過濾器。<br><br>👉 抓 <b style="color:#34d399;">3 件安全行李</b>，避開調味料！' },
+  { emoji:'🍪', title:'第 2 課：會掉屑的食物', forbid:['🍪','🍟','🥖','🍿'], body:'洋芋片、餅乾、麵包<b style="color:#fca5a5;">會掉渣</b>，碎屑亂飛會被吸入或卡進機器。<br><br>👉 抓 <b style="color:#34d399;">3 件安全行李</b>，別碰掉屑食物！' },
+  { emoji:'🥤', title:'第 3 課：碳酸飲料', forbid:['🥤','🍾'], body:'太空中<b style="color:#fca5a5;">氣泡困在肚子裡</b>，不能打嗝排出，會很難受甚至想吐。<br><br>👉 抓 <b style="color:#34d399;">3 件安全行李</b>，避開汽水！' },
+  { emoji:'🧴', title:'第 4 課：易燃揮發品', forbid:['🧴','💅','🕯️','🧪'], body:'香水、噴霧、蠟燭含<b style="color:#fca5a5;">易燃成分</b>，會起火又污染空氣。<br><br>👉 抓 <b style="color:#34d399;">3 件安全行李</b>，遠離易燃品！' },
+  { emoji:'🔧', title:'第 5 課：金屬銳器', forbid:['🔧','✂️','🔪','🔨','🪛'], body:'沒固定的<b style="color:#fca5a5;">金屬工具和刀剪</b>會漂浮亂撞，砸壞儀器。<br><br>👉 抓 <b style="color:#34d399;">3 件安全行李</b>，避開金屬銳器！' },
+];
+
+async function fetchLeaderboardFromCloud(m){
+  if(!GAS_WEB_APP_URL) return null;
+  try{ const r=await fetch(`${GAS_WEB_APP_URL}?mode=${m}`); return await r.json(); }
+  catch(e){ return 'error'; }
+}
+
+// 【更新】雲端儲存改為統一格式
+async function saveResultToCloud(p){
+  if(!GAS_WEB_APP_URL){ return false; }
+  try{ 
+    const gameModeName = p.mode === 'campaign' ? '太空人行李(關卡)' : '太空人行李(無盡)';
+    const data = {
+        gameName: gameModeName,
+        studentClass: studentClass,
+        studentId: studentId,
+        playDate: new Date().toLocaleDateString('zh-HK'),
+        playTime: p.time + "秒",
+        score: p.score
+    };
+    await fetch(GAS_WEB_APP_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(data)}); 
+    return true; 
+  }
+  catch(e){ return false; }
+}
+
+let lbTab='campaign';
+function showLeaderboard(t){ lbTab=t; setLbTab(t); document.getElementById('lb-modal').classList.remove('hidden'); }
+function setLbTab(t){
+  lbTab=t;
+  document.getElementById('lb-tab-campaign').className='btn '+(t==='campaign'?'btn-indigo':'btn-ghost');
+  document.getElementById('lb-tab-endless').className ='btn '+(t==='endless' ?'btn-indigo':'btn-ghost');
+  renderLeaderboard(t);
+}
+async function renderLeaderboard(m){
+  const el=document.getElementById('lb-content');
+  el.innerHTML='<p style="color:#94a3b8;font-size:0.95rem;text-align:center;padding:24px 0;">⏳ 載入中...</p>';
+  if(!GAS_WEB_APP_URL){ el.innerHTML='<p style="color:#94a3b8;font-size:0.95rem;text-align:center;padding:24px 0;">尚未設定雲端網址</p>'; return; }
+  const data=await fetchLeaderboardFromCloud(m);
+  if(data==='error'){ el.innerHTML='<p style="color:#fca5a5;font-size:0.95rem;text-align:center;padding:24px 0;">連線失敗</p>'; return; }
+  if(!data || !data.length){ el.innerHTML='<p style="color:#94a3b8;font-size:0.95rem;text-align:center;padding:24px 0;">暫無紀錄</p>'; return; }
+  const rows=data.map((e,i)=>{
+    const medal=i===0?'🥇':i===1?'🥈':i===2?'🥉':`${i+1}.`;
+    const right = m==='campaign' ? `${e.score} 分 ｜ ${e.passed}/5 關` : `${e.score} 分 ｜ ⏱ ${e.time}s`;
+    return `<tr><td>${medal}</td><td>${e.cls} ${e.num}</td><td>${right}</td></tr>`;
+  }).join('');
+  el.innerHTML=`<table class="lb-table"><thead><tr><th>#</th><th>學生</th><th>成績</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function initAudio(){ if(!audioCtx) audioCtx=new (window.AudioContext||window.webkitAudioContext)(); if(audioCtx.state==='suspended') audioCtx.resume(); }
+function playSound(type){
+  if(!audioCtx) return;
+  const o=audioCtx.createOscillator(), g=audioCtx.createGain(); o.connect(g); g.connect(audioCtx.destination); const n=audioCtx.currentTime;
+  if(type==='good'){ o.type='triangle'; o.frequency.setValueAtTime(523,n); o.frequency.setValueAtTime(784,n+0.08); g.gain.setValueAtTime(0.18,n); g.gain.exponentialRampToValueAtTime(0.01,n+0.25); o.start(n); o.stop(n+0.25); }
+  else if(type==='bad'){ o.type='sawtooth'; o.frequency.setValueAtTime(180,n); o.frequency.exponentialRampToValueAtTime(60,n+0.3); g.gain.setValueAtTime(0.3,n); g.gain.exponentialRampToValueAtTime(0.01,n+0.3); o.start(n); o.stop(n+0.3); }
+  else if(type==='fire'){ o.type='square'; o.frequency.setValueAtTime(140,n); o.frequency.linearRampToValueAtTime(420,n+0.15); g.gain.setValueAtTime(0.08,n); g.gain.exponentialRampToValueAtTime(0.01,n+0.15); o.start(n); o.stop(n+0.15); }
+  else if(type==='eject'){ o.type='square'; o.frequency.setValueAtTime(300,n); o.frequency.exponentialRampToValueAtTime(90,n+0.2); g.gain.setValueAtTime(0.15,n); g.gain.exponentialRampToValueAtTime(0.01,n+0.2); o.start(n); o.stop(n+0.2); }
+  else if(type==='bounce'){ o.type='sine'; o.frequency.setValueAtTime(220,n); o.frequency.exponentialRampToValueAtTime(110,n+0.15); g.gain.setValueAtTime(0.22,n); g.gain.exponentialRampToValueAtTime(0.01,n+0.15); o.start(n); o.stop(n+0.15); }
+  else if(type==='power'){ o.type='triangle'; o.frequency.setValueAtTime(660,n); o.frequency.setValueAtTime(880,n+0.08); o.frequency.setValueAtTime(1175,n+0.16); g.gain.setValueAtTime(0.18,n); g.gain.exponentialRampToValueAtTime(0.01,n+0.35); o.start(n); o.stop(n+0.35); }
+  else if(type==='win'){ [523,659,784,1046].forEach((f,i)=>{ const oo=audioCtx.createOscillator(),gg=audioCtx.createGain(); oo.connect(gg); gg.connect(audioCtx.destination); oo.type='triangle'; oo.frequency.setValueAtTime(f,n+i*0.12); gg.gain.setValueAtTime(0.15,n+i*0.12); gg.gain.exponentialRampToValueAtTime(0.01,n+i*0.12+0.3); oo.start(n+i*0.12); oo.stop(n+i*0.12+0.3); }); }
+  else if(type==='lose'){ o.type='sine'; o.frequency.setValueAtTime(400,n); o.frequency.exponentialRampToValueAtTime(80,n+0.6); g.gain.setValueAtTime(0.25,n); g.gain.exponentialRampToValueAtTime(0.01,n+0.6); o.start(n); o.stop(n+0.6); }
+}
+
+function resize(){
+  DPR = 1; 
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = W * DPR; canvas.height = H * DPR;
+  canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  arm.pivotX = W/2; arm.pivotY = Math.max(96, H*0.11);
+  arm.maxLength = Math.hypot(W,H) + 80;   
+
+  bgGrd=ctx.createLinearGradient(0,0,0,H);
+  bgGrd.addColorStop(0,'#0a1336'); bgGrd.addColorStop(0.5,'#070c24'); bgGrd.addColorStop(1,'#04060f');
+  
+  bgRadialGrd=ctx.createRadialGradient(W/2,H+H*0.5,H*0.2,W/2,H+H*0.5,H*0.9);
+  bgRadialGrd.addColorStop(0,'rgba(56,189,248,0.18)'); bgRadialGrd.addColorStop(1,'rgba(56,189,248,0)');
+
+  visorGrd=ctx.createLinearGradient(arm.pivotX-17, arm.pivotY-77, arm.pivotX+17, arm.pivotY-43);
+  visorGrd.addColorStop(0,'#0a1f4d'); visorGrd.addColorStop(0.5,'#1e6fd8'); visorGrd.addColorStop(1,'#7ff0ff');
+}
+window.addEventListener('resize', resize);
+function buildStars(){ stars=[]; for(let i=0;i<90;i++) stars.push({x:Math.random(),y:Math.random(),r:Math.random()*1.6+0.3,tw:Math.random()*6.28,sp:0.5+Math.random()*1.5}); }
+
+function show(id){ document.getElementById(id).classList.remove('hidden'); }
+function hide(id){ document.getElementById(id).classList.add('hidden'); }
+
+function initGame(m){
+  initAudio(); mode=m;
+  score=0; combo=1; safeCount=0; badCount=0;
+  holdingItem=null; armPaused=false;
+  obstacles=[]; resetPowers(); lastPowerBar=''; hide('powerup-bar');
+  hide('ui-center'); show('hud'); hide('eject-btn'); show('fire-btn');
+  document.getElementById('fire-btn').classList.remove('busy');
+  clearTimers();
+  hide('hud-endless'); hide('hud-campaign'); hide('hud-tutorial'); hide('hud-time-wrap'); hide('mission-card');
+  arm.state='swing'; arm.length=arm.minLength; arm.grabbed=null;
+
+  if(m==='endless'){
+    show('hud-endless'); show('hud-time-wrap');
+    timeLeft=60; sessionStart=Date.now(); arm.swingSpeed=1.45;
+    startTimer(); spawnInitial(8,0.5); spawnObstacles(2,1);
+    setMission('♾️ 無盡模式','60 秒內盡量送出<b style="color:#34d399;">安全行李</b>！小心 ☄️ 隕石和 🛰️ 太空垃圾會擋路。抓到 🔍🛡️🧲 道具有特殊效果。');
+    show('mission-card'); updateEndlessHUD();
+  } else if(m==='campaign'){
+    show('hud-campaign');
+    campaignStep=0; campaignPassed=0; campaignScore=0; campaignAnswers=[];
+    campaignStartTime=Date.now(); startCampaignTimer();
+    startCampaignLevel();
+  } else if(m==='tutorial'){
+    show('hud-tutorial'); tutStep=0; startTutorialLesson();
+  }
+  running=true; lastTime=performance.now();
+}
+function clearTimers(){
+  if(timerInterval){clearInterval(timerInterval);timerInterval=null;}
+  if(campaignTimerInterval){clearInterval(campaignTimerInterval);campaignTimerInterval=null;}
+}
+function startTimer(){
+  if(timerInterval) clearInterval(timerInterval);
+  timerInterval=setInterval(()=>{ if(!running) return; timeLeft--; updateEndlessHUD(); if(timeLeft<=0){timeLeft=0;updateEndlessHUD();endEndless();} },1000);
+}
+function startCampaignTimer(){
+  if(campaignTimerInterval) clearInterval(campaignTimerInterval);
+  campaignTimerInterval=setInterval(()=>{
+    if(!running||mode!=='campaign') return;
+    timeLeft--; const t=document.getElementById('hud-time'); t.textContent=timeLeft+'s'; t.style.color=timeLeft<=10?'#f87171':'#fff';
+    if(timeLeft<=0){ timeLeft=0; finishCampaignLevel(false); }
+  },1000);
+}
+function setMission(badge,text){ document.getElementById('mission-badge').textContent=badge; document.getElementById('mission-text').innerHTML=text; }
+
+function updateEndlessHUD(){
+  document.getElementById('hud-score').textContent=score;
+  document.getElementById('hud-combo').textContent=combo;
+  const t=document.getElementById('hud-time'); t.textContent=timeLeft+'s'; t.style.color=timeLeft<=10?'#f87171':'#fff';
+}
+async function endEndless(){
+  running=false; clearTimers(); playSound('lose');
+  const totalTime=Math.floor((Date.now()-sessionStart)/1000);
+  document.getElementById('final-score').textContent=score;
+  document.getElementById('final-safe').textContent=safeCount;
+  document.getElementById('final-bad').textContent=badCount;
+  hide('fire-btn'); hide('eject-btn'); show('gameover-overlay');
+  
+  const btn=document.getElementById('go-restart-btn');
+  btn.textContent='⏳ 雲端儲存中...'; btn.disabled=true;
+  await saveResultToCloud({mode:'endless', score:score, time:totalTime, safe:safeCount, bad:badCount});
+  btn.textContent='返回主畫面'; btn.disabled=false;
+}
+
+function startCampaignLevel(){
+  const L=CAMPAIGN_LEVELS[campaignStep];
+  cpTargetSafe=3; cpCollected=0;
+  timeLeft=L.time; arm.swingSpeed=L.swing;
+  holdingItem=null; armPaused=false; resetPowers(); lastPowerBar=''; hide('eject-btn'); show('fire-btn');
+  arm.state='swing'; arm.length=arm.minLength; arm.grabbed=null;
+  spawnInitial(L.density, L.safeRatio);
+  spawnObstacles(L.meteors, L.junk);
+  document.getElementById('hud-cp-level').textContent=campaignStep+1;
+  document.getElementById('hud-time').textContent=timeLeft+'s';
+  show('hud-time-wrap'); updateCampaignHUD();
+  const obsTxt = (L.meteors||L.junk) ? '<br>⚠️ 小心 ☄️ 隕石／🛰️ 太空垃圾擋路！' : '';
+  setMission(`第 ${campaignStep+1} / 5 關`, `🎯 收集 <b style="color:#34d399;">3 件</b>安全行李過關！${obsTxt}`);
+  show('mission-card');
+}
+function updateCampaignHUD(){
+  document.getElementById('hud-cp-collect').textContent=`${cpCollected}/3`;
+  document.getElementById('hud-cp-score').textContent=campaignScore;
+  document.getElementById('hud-cp-level').textContent=campaignStep+1;
+}
+function finishCampaignLevel(passed){
+  running=false;
+  if(passed){ campaignPassed++; campaignScore+=200+timeLeft*5; playSound('win'); }
+  else playSound('lose');
+  updateCampaignHUD();
+  campaignAnswers.push({lvl:campaignStep+1,passed,collected:cpCollected});
+  const last=campaignStep>=CAMPAIGN_LEVELS.length-1;
+  showResult(passed, passed?'✅ 過關！':'⏱️ 時間到', passed?`成功收集 3 件安全行李`:`這關沒收集滿，沒關係！`, passed?`太空人很滿意你的安檢！`:`記住：會掉屑、易燃、碳酸、固體調味、金屬銳器都不能上太空。`, last?'查看總成績':'下一關 →');
+}
+
+function startTutorialLesson(){
+  const L=TUTORIAL_LESSONS[tutStep];
+  document.getElementById('lesson-emoji').textContent=L.emoji;
+  document.getElementById('lesson-title').textContent=L.title;
+  document.getElementById('lesson-body').innerHTML=L.body;
+  show('lesson-modal'); hide('fire-btn'); hide('eject-btn'); running=false;
+}
+function beginTutorialPractice(){
+  hide('lesson-modal'); show('fire-btn');
+  const L=TUTORIAL_LESSONS[tutStep];
+  tutCollected=0; tutNeed=3; holdingItem=null; armPaused=false;
+  obstacles=[]; resetPowers(); lastPowerBar=''; hide('powerup-bar');
+  arm.state='swing'; arm.length=arm.minLength; arm.grabbed=null;
+  items=[];
+  const forb=FORBIDDEN.filter(f=>L.forbid.includes(f.emoji));
+  for(let i=0;i<3;i++) spawnItem(pick(SAFE),true,SPEED_TIERS[0]);
+  for(let i=0;i<3;i++) spawnItem(pick(forb),false,SPEED_TIERS[0]);
+  document.getElementById('hud-tut-step').textContent=tutStep+1;
+  document.getElementById('hud-tut-collect').textContent=`0/${tutNeed}`;
+  setMission(`教學 ${tutStep+1}/5`, L.body);
+  show('mission-card'); running=true; lastTime=performance.now();
+}
+function finishTutorialLesson(){
+  running=false; playSound('win');
+  const last=tutStep>=TUTORIAL_LESSONS.length-1;
+  showResult(true,'🎓 完成！','你認識了一種違禁品','',last?'結束教學':'下一課 →');
+}
+
+function showResult(success,title,sub,body,nextLabel){
+  const t=document.getElementById('result-title'),s=document.getElementById('result-sub');
+  t.textContent=title; t.style.color=success?'#34d399':'#fbbf24';
+  s.textContent=sub; s.style.color=success?'#a7f3d0':'#fde68a';
+  const b=document.getElementById('result-body');
+  if(body){ b.innerHTML=body; b.style.display='block'; } else b.style.display='none';
+  document.getElementById('next-btn').textContent=nextLabel;
+  hide('fire-btn'); hide('eject-btn'); show('result-overlay');
+}
+function handleNext(){
+  hide('result-overlay');
+  if(mode==='tutorial'){
+    tutStep++;
+    if(tutStep>=TUTORIAL_LESSONS.length) returnHome(); else startTutorialLesson();
+  } else if(mode==='campaign'){
+    if(campaignStep>=CAMPAIGN_LEVELS.length-1){ showCampaignComplete(); }
+    else { campaignStep++; show('fire-btn'); running=true; lastTime=performance.now(); startCampaignLevel(); }
+  }
+}
+async function showCampaignComplete(){
+  clearTimers();
+  const totalTime=Math.floor((Date.now()-campaignStartTime)/1000);
+  document.getElementById('cp-score').textContent=campaignScore;
+  document.getElementById('cp-passed').textContent=`${campaignPassed}/5`;
+  document.getElementById('cp-total-time').textContent=`${totalTime}s`;
+  hide('fire-btn'); hide('eject-btn'); show('campaign-complete-overlay');
+  
+  const vb=document.getElementById('cp-view-lb-btn'), rb=document.getElementById('cp-restart-btn');
+  vb.textContent='⏳ 雲端儲存中...'; vb.disabled=true; rb.style.display='none';
+  const ok=await saveResultToCloud({mode:'campaign', score:campaignScore, passed:campaignPassed, time:totalTime});
+  vb.textContent= ok?'🏆 查看排行榜':'❌ 儲存失敗'; vb.disabled=false; rb.style.display='block';
+}
+
+function pick(a){ return a[Math.floor(Math.random()*a.length)]; }
+function pickTier(){ const r=Math.random(); let acc=0; for(const t of SPEED_TIERS){ acc+=t.p; if(r<=acc) return t; } return SPEED_TIERS[0]; }
+function inReach(x,y){
+  const maxA=arm.maxAngle*0.85, dy=y-arm.pivotY, maxDx=Math.tan(maxA)*dy;
+  let dx=x-arm.pivotX; if(Math.abs(dx)>maxDx) x=arm.pivotX+Math.sign(dx||1)*maxDx; return x;
+}
+function spawnItem(def, good, forced){
+  const r=Math.min(W,H)*0.052+22;
+  const topB=arm.pivotY+115, botB=H-130, leftB=r+16, rightB=W-r-16;
+  let x=leftB+Math.random()*(rightB-leftB);
+  let y=topB+Math.random()*(botB-topB);
+  x=Math.max(leftB,Math.min(rightB,inReach(x,y)));
+  const tier=forced||pickTier();
+  const ang=Math.random()*6.28, sp=(8+Math.random()*10)*tier.f;
+  items.push({...def, good, x, y, r, vx:Math.cos(ang)*sp, vy:Math.sin(ang)*sp, grabbed:false, bonus:tier.bonus, tag:tier.tag});
+}
+function spawnPowerup(){
+  if(items.some(i=>i.power)) return;
+  const pu=pick(POWERUPS), r=Math.min(W,H)*0.05+22;
+  const topB=arm.pivotY+115, botB=H-130, leftB=r+16, rightB=W-r-16;
+  let x=leftB+Math.random()*(rightB-leftB), y=topB+Math.random()*(botB-topB);
+  x=Math.max(leftB,Math.min(rightB,inReach(x,y)));
+  const ang=Math.random()*6.28;
+  items.push({...pu, good:true, x, y, r, vx:Math.cos(ang)*10, vy:Math.sin(ang)*10, grabbed:false, bonus:1, tag:''});
+}
+function maybeSpawnPowerup(){ if(mode==='tutorial') return; if(items.some(i=>i.power)) return; if(Math.random()<0.14) spawnPowerup(); }
+
+function makeCraters(){ const n=3+Math.floor(Math.random()*3), a=[]; for(let i=0;i<n;i++) a.push({dx:(Math.random()-0.5)*0.9,dy:(Math.random()-0.5)*0.9,cr:0.1+Math.random()*0.16}); return a; }
+function spawnObstacle(kind){
+  const big=kind==='junk';
+  const r= big ? Math.min(W,H)*0.07+28 : Math.min(W,H)*0.05+24;
+  const topB=arm.pivotY+115, botB=H-140;
+  const x=40+Math.random()*(W-80), y=topB+Math.random()*Math.max(40,botB-topB);
+  const baseSp= big ? 14 : 36, ang=Math.random()*6.28;
+  obstacles.push({ kind, x, y, r, vx:Math.cos(ang)*baseSp, vy:Math.sin(ang)*baseSp, rot:Math.random()*6.28, rotSpeed:(Math.random()-0.5)*1.2, craters:makeCraters() });
+}
+function spawnObstacles(meteors,junk){ obstacles=[]; for(let i=0;i<(meteors||0);i++) spawnObstacle('meteor'); for(let i=0;i<(junk||0);i++) spawnObstacle('junk'); }
+
+function spawnInitial(n,safeRatio){ items=[]; for(let i=0;i<n;i++){ const g=Math.random()<safeRatio; spawnItem(g?pick(SAFE):pick(FORBIDDEN),g); } }
+function maybeRespawn(safeRatio){
+  let target= mode==='endless'?8:(CAMPAIGN_LEVELS[campaignStep]?.density||8);
+  let guard=0;
+  while(items.filter(i=>!i.power).length<target && guard++<40){ const g=Math.random()<(safeRatio??0.5); spawnItem(g?pick(SAFE):pick(FORBIDDEN),g); }
+}
+function fireArm(){
+  if(!running||armPaused) return; if(arm.state!=='swing') return;
+  magnetTarget=null;
+  if(nowMs<magnetUntil){
+    let best=null,bd=1e9;
+    for(const it of items){ if(it.grabbed||it.power||!it.good) continue; const d=Math.hypot(it.x-arm.pivotX,it.y-arm.pivotY); if(d<bd){bd=d;best=it;} }
+    magnetTarget=best;
+  }
+  arm.state='extend'; playSound('fire'); document.getElementById('fire-btn').classList.add('busy');
+}
+function clawTip(){ return { x:arm.pivotX+Math.sin(arm.angle)*arm.length, y:arm.pivotY+Math.cos(arm.angle)*arm.length }; }
+
+function onGrabComplete(it){
+  document.getElementById('fire-btn').classList.remove('busy'); magnetTarget=null;
+  if(it.power){ removeItem(it); activatePower(it.power); if(mode!=='tutorial'){ const r=mode==='endless'?0.5:CAMPAIGN_LEVELS[campaignStep].safeRatio; maybeRespawn(r); } return; }
+  if(it.good) resolveSafe(it); else enterHold(it);
+}
+function activatePower(p){
+  playSound('power');
+  if(p==='scan'){ scannerUntil=nowMs+6000; showToast(true,'🔍 掃描器啟動','綠＝安全、紅＝危險，持續 6 秒',false); }
+  else if(p==='shield'){ shieldActive=true; showToast(true,'🛡️ 護盾啟動','可擋下一次抓錯，不扣分',false); }
+  else if(p==='magnet'){ magnetUntil=nowMs+6000; showToast(true,'🧲 磁力手套','發射會自動瞄準最近的安全行李，6 秒',false); }
+  updatePowerBar();
+}
+function resolveSafe(it){
+  playSound('good');
+  const tagTxt = it.tag?` (${it.tag} ×${it.bonus})`:'';
+  showToast(true,`✅ ${it.name}${tagTxt}`,'安全！可以上太空');
+  removeItem(it);
+  if(mode==='tutorial'){
+    tutCollected++; document.getElementById('hud-tut-collect').textContent=`${tutCollected}/${tutNeed}`;
+    if(tutCollected>=tutNeed){ finishTutorialLesson(); return; }
+  } else if(mode==='endless'){
+    safeCount++; combo=Math.min(combo+1,5); score+=Math.round(10*combo*(it.bonus||1)); updateEndlessHUD(); maybeRespawn(0.5); maybeSpawnPowerup();
+  } else if(mode==='campaign'){
+    cpCollected++; campaignScore+=Math.round(100*(it.bonus||1)); updateCampaignHUD();
+    if(cpCollected>=cpTargetSafe){ finishCampaignLevel(true); return; }
+    maybeRespawn(CAMPAIGN_LEVELS[campaignStep].safeRatio); maybeSpawnPowerup();
+  }
+}
+function enterHold(it){
+  if(shieldActive){
+    shieldActive=false; updatePowerBar(); playSound('eject');
+    showToast(true,'🛡️ 護盾擋下違禁品！',`${it.name} 已安全丟棄，不扣分`,false);
+    removeItem(it);
+    if(mode!=='tutorial'){ const r=mode==='endless'?0.5:CAMPAIGN_LEVELS[campaignStep].safeRatio; maybeRespawn(r); }
+    return;
+  }
+  holdingItem=it; armPaused=true;
+  const tip=clawTip(); it.x=tip.x; it.y=tip.y;
+  if(mode==='endless'){ badCount++; combo=1; score=Math.max(0,score-15); timeLeft=Math.max(0,timeLeft-2); updateEndlessHUD(); }
+  else if(mode==='campaign'){ badCount++; campaignScore=Math.max(0,campaignScore-30); updateCampaignHUD(); }
+  playSound('bad');
+  document.body.classList.add('shake'); setTimeout(()=>document.body.classList.remove('shake'),450);
+  showToast(false,`🚫 ${it.name}（${it.cat}）`, it.reason+'<br><b style="color:#fde68a;">→ 按下方 🗑️ 丟棄</b>', true);
+  hide('fire-btn'); show('eject-btn');
+}
+function ejectHeld(){
+  if(!holdingItem) return;
+  playSound('eject');
+  removeItem(holdingItem); holdingItem=null; armPaused=false;
+  hide('eject-btn'); hide('toast');
+  if(running) show('fire-btn');
+  arm.state='swing';
+  if(mode!=='tutorial'){ const r= mode==='endless'?0.5:CAMPAIGN_LEVELS[campaignStep].safeRatio; maybeRespawn(r); }
+}
+function removeItem(it){ const i=items.indexOf(it); if(i>=0) items.splice(i,1); }
+
+let toastTimer=null;
+function showToast(good,head,body,persist){
+  const el=document.getElementById('toast');
+  el.innerHTML=`<div class="toast-card" style="background:${good?'linear-gradient(135deg,#065f46,#047857)':'linear-gradient(135deg,#7f1d1d,#991b1b)'};border:1px solid ${good?'rgba(52,211,153,0.5)':'rgba(248,113,113,0.5)'};color:#fff;">
+    <div style="font-size:1.2rem;font-weight:900;margin-bottom:${body?'6px':'0'};">${head}</div>
+    ${body?`<div style="font-size:0.98rem;font-weight:600;line-height:1.6;color:#f1f5f9;">${body}</div>`:''}
+  </div>`;
+  el.classList.remove('hidden');
+  if(toastTimer) clearTimeout(toastTimer);
+  if(!persist) toastTimer=setTimeout(()=>el.classList.add('hidden'), good?900:1800);
+}
+
+function updatePowerBar(){
+  const el=document.getElementById('powerup-bar');
+  const badge=(emoji,name,sec,color)=>`<div style="background:rgba(11,16,40,0.85);border:1px solid ${color};border-radius:12px;padding:5px 10px;display:flex;align-items:center;gap:6px;box-shadow:0 3px 12px rgba(0,0,0,0.4);"><span style="font-size:1.1rem;">${emoji}</span><span style="font-size:0.84rem;font-weight:800;color:${color};">${name}${sec!=null?` ${sec}s`:''}</span></div>`;
+  const parts=[];
+  if(nowMs<scannerUntil) parts.push(badge('🔍','掃描器',Math.ceil((scannerUntil-nowMs)/1000),'#22d3ee'));
+  if(nowMs<magnetUntil)  parts.push(badge('🧲','磁力',Math.ceil((magnetUntil-nowMs)/1000),'#f472b6'));
+  if(shieldActive)       parts.push(badge('🛡️','護盾',null,'#a78bfa'));
+  const html=parts.join('');
+  if(html!==lastPowerBar){ el.innerHTML=html; lastPowerBar=html; }
+  if(parts.length && running) el.classList.remove('hidden'); else el.classList.add('hidden');
+}
+
+function update(dt){
+  if(!armPaused){
+    if(arm.state==='swing'){
+      arm.angle += arm.dir*arm.swingSpeed*dt;
+      if(arm.angle>arm.maxAngle){ arm.angle=arm.maxAngle; arm.dir=-1; }
+      if(arm.angle<-arm.maxAngle){ arm.angle=-arm.maxAngle; arm.dir=1; }
+      arm.length=arm.minLength;
+    } else if(arm.state==='extend'){
+      if(magnetTarget && nowMs<magnetUntil && items.includes(magnetTarget) && !magnetTarget.grabbed){
+        let a=Math.atan2(magnetTarget.x-arm.pivotX, magnetTarget.y-arm.pivotY);
+        const lim=arm.maxAngle; arm.angle=Math.max(-lim,Math.min(lim,a));
+      } else magnetTarget=null;
+      arm.length += arm.extendSpeed*dt;
+      const tip=clawTip();
+      let blocked=false;
+      for(const o of obstacles){ if(Math.hypot(tip.x-o.x,tip.y-o.y)<o.r){ blocked=true; break; } }
+      if(blocked){ arm.state='retract'; magnetTarget=null; playSound('bounce'); document.body.classList.add('shake'); setTimeout(()=>document.body.classList.remove('shake'),300); }
+      else if(arm.length>=arm.maxLength || tip.x<6 || tip.x>W-6 || tip.y>H-10){ arm.state='retract'; }
+      else { for(const it of items){ if(it.grabbed) continue; if(Math.hypot(tip.x-it.x,tip.y-it.y)<it.r){ arm.grabbed=it; it.grabbed=true; arm.state='retract'; break; } } }
+    } else if(arm.state==='retract'){
+      arm.length -= arm.extendSpeed*1.2*dt;
+      if(arm.grabbed){ const tip=clawTip(); arm.grabbed.x=tip.x; arm.grabbed.y=tip.y; }
+      if(arm.length<=arm.minLength){ arm.length=arm.minLength; arm.state='swing'; const g=arm.grabbed; arm.grabbed=null; if(g) onGrabComplete(g); }
+    }
+  }
+  const topB=arm.pivotY+95, botB=H-120, leftB=16, rightB=W-16;
+  for(const it of items){
+    if(it.grabbed) continue;
+    it.x+=it.vx*dt; it.y+=it.vy*dt;
+    if(it.x<leftB+it.r){it.x=leftB+it.r;it.vx*=-1;} if(it.x>rightB-it.r){it.x=rightB-it.r;it.vx*=-1;}
+    if(it.y<topB+it.r){it.y=topB+it.r;it.vy*=-1;} if(it.y>botB-it.r){it.y=botB-it.r;it.vy*=-1;}
+  }
+  const oT=arm.pivotY+100, oB=H-110, oL=8, oR=W-8;
+  for(const o of obstacles){
+    o.x+=o.vx*dt; o.y+=o.vy*dt; o.rot+=o.rotSpeed*dt;
+    if(o.x<oL+o.r){o.x=oL+o.r;o.vx*=-1;} if(o.x>oR-o.r){o.x=oR-o.r;o.vx*=-1;}
+    if(o.y<oT+o.r){o.y=oT+o.r;o.vy*=-1;} if(o.y>oB-o.r){o.y=oB-o.r;o.vy*=-1;}
+  }
+}
+
+function draw(t){
+  if (bgGrd) { ctx.fillStyle=bgGrd; ctx.fillRect(0,0,W,H); }
+  
+  ctx.fillStyle='#cfe3ff';
+  for(const s of stars){ 
+    if ((nowMs + s.tw * 1000) % 2000 < 200) continue; 
+    ctx.fillRect(s.x*W, s.y*H, s.r*2, s.r*2); 
+  }
+  
+  if (bgRadialGrd) { ctx.fillStyle=bgRadialGrd; ctx.fillRect(0,0,W,H); }
+  drawObstacles(); drawItems(); drawArm(); drawAstronaut();
+}
+
+function drawObstacles(){
+  for(const o of obstacles){
+    if(o.kind==='meteor'){
+      const dir=Math.atan2(o.vy,o.vx);
+      ctx.strokeStyle = 'rgba(251,146,60,0.4)';
+      ctx.lineWidth=o.r*0.9; ctx.lineCap='round';
+      ctx.beginPath(); ctx.moveTo(o.x,o.y); ctx.lineTo(o.x-Math.cos(dir)*o.r*2.4,o.y-Math.sin(dir)*o.r*2.4); ctx.stroke();
+    }
+    ctx.save(); ctx.translate(o.x,o.y); ctx.rotate(o.rot);
+    if(o.kind==='meteor'){
+      ctx.fillStyle = '#8a6b4f'; 
+      ctx.beginPath(); ctx.arc(0,0,o.r,0,6.28); ctx.fill();
+      ctx.strokeStyle='#2e2114'; ctx.lineWidth=3; ctx.stroke();
+      ctx.fillStyle='rgba(40,28,16,0.55)';
+      for(const c of o.craters){ ctx.beginPath(); ctx.arc(c.dx*o.r,c.dy*o.r,c.cr*o.r,0,6.28); ctx.fill(); }
+    } else {
+      ctx.fillStyle='#1e3a8a';
+      ctx.fillRect(-o.r*1.75,-o.r*0.34,o.r*0.7,o.r*0.68); ctx.fillRect(o.r*1.05,-o.r*0.34,o.r*0.7,o.r*0.68);
+      ctx.strokeStyle='#60a5fa'; ctx.lineWidth=1.5;
+      ctx.strokeRect(-o.r*1.75,-o.r*0.34,o.r*0.7,o.r*0.68); ctx.strokeRect(o.r*1.05,-o.r*0.34,o.r*0.7,o.r*0.68);
+      ctx.strokeStyle='#475569'; ctx.lineWidth=4; ctx.beginPath(); ctx.moveTo(-o.r*1.05,0); ctx.lineTo(o.r*1.05,0); ctx.stroke();
+      ctx.fillStyle='#9aa6b5'; rr(0,0,o.r*1.15,o.r*0.95,7); ctx.fill();
+      ctx.strokeStyle='#475569'; ctx.lineWidth=3; rr(0,0,o.r*1.15,o.r*0.95,7); ctx.stroke();
+      ctx.fillStyle='#fbbf24'; ctx.beginPath(); ctx.arc(0,0,o.r*0.16,0,6.28); ctx.fill();
+    }
+    ctx.restore();
+    
+    ctx.font='bold 12px "PingFang TC","Microsoft JhengHei",sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillStyle='#fda4af';
+    const lbl=o.kind==='meteor'?'☄️ 隕石':'🛰️ 太空垃圾';
+    ctx.fillText(lbl,o.x,o.y+o.r+12);
+  }
+}
+
+function drawItems(){
+  const scanOn = nowMs<scannerUntil;
+  for(const it of items){
+    ctx.save(); ctx.translate(it.x,it.y);
+    if(it.bonus>1 && !it.grabbed && !it.power){ ctx.globalAlpha=0.22; ctx.fillStyle= it.bonus>=2?'#f97316':'#fbbf24'; ctx.beginPath(); ctx.arc(-it.vx*0.05,-it.vy*0.05,it.r*0.92,0,6.28); ctx.fill(); ctx.globalAlpha=1; }
+    ctx.beginPath(); ctx.arc(0,0,it.r,0,6.28);
+    ctx.fillStyle= it.power?'rgba(15,23,42,0.94)':'rgba(30,41,59,0.9)'; ctx.fill();
+    let ring='rgba(148,163,184,0.65)';
+    if(it.grabbed) ring='#fbbf24';
+    else if(it.power) ring=it.color;
+    else if(scanOn) ring= it.good?'#34d399':'#f87171';
+    else if(it.bonus>=2) ring='#f97316';
+    else if(it.bonus>1) ring='#fbbf24';
+    ctx.lineWidth= it.power?3.5:2.5; ctx.strokeStyle=ring;
+    
+    if(it.power){
+      ctx.save(); ctx.globalAlpha = 0.3; ctx.lineWidth = 6; ctx.strokeStyle = it.color; ctx.stroke(); ctx.restore();
+    }
+    ctx.stroke();
+    
+    ctx.font=`${Math.floor(it.r*1.25)}px serif`; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(it.emoji,0,1);
+    
+    ctx.font='bold 15px "PingFang TC","Microsoft JhengHei",sans-serif';
+    ctx.fillStyle= it.power?it.color:'#fff';
+    ctx.fillText(it.name,0,it.r+13);
+    
+    if(it.tag && !it.power){ 
+      ctx.font='bold 12px "PingFang TC","Microsoft JhengHei",sans-serif'; 
+      ctx.fillStyle= it.bonus>=2?'#fb923c':'#fcd34d'; 
+      ctx.fillText('»'+it.tag,0,-it.r-9); 
+    }
+    ctx.restore();
+  }
+}
+
+function drawArm(){
+  ctx.save();
+  ctx.translate(arm.pivotX,arm.pivotY);
+  ctx.rotate(-arm.angle);           
+  const L=arm.length;
+  ctx.fillStyle='#64748b';
+  ctx.fillRect(-7,0,14,L);
+  ctx.fillStyle='#94a3b8';
+  ctx.fillRect(-4,0,8,L);
+  ctx.strokeStyle='rgba(15,23,42,0.6)'; ctx.lineWidth=1;
+  for(let s=20;s<L;s+=24){ ctx.beginPath(); ctx.moveTo(-7,s); ctx.lineTo(7,s); ctx.stroke(); }
+  ctx.translate(0,L);
+  const open=arm.grabbed?5:15;
+  const clawCol = (nowMs<magnetUntil)?'#f472b6':'#67e8f9';
+  ctx.lineCap='round'; ctx.lineWidth=6; ctx.strokeStyle=clawCol;
+  ctx.beginPath(); ctx.moveTo(0,-4); ctx.lineTo(-open,20); ctx.moveTo(0,-4); ctx.lineTo(open,20); ctx.stroke();
+  ctx.lineWidth=6; ctx.beginPath(); ctx.moveTo(-open,20); ctx.lineTo(-open-3,12); ctx.moveTo(open,20); ctx.lineTo(open+3,12); ctx.stroke();
+  ctx.fillStyle='#0891b2'; ctx.beginPath(); ctx.arc(0,-4,8,0,6.28); ctx.fill();
+  ctx.strokeStyle='#a5f3fc'; ctx.lineWidth=2.5; ctx.stroke();
+  ctx.restore();
+}
+
+function rr(cx,cy,w,h,r){
+  ctx.beginPath();
+  ctx.moveTo(cx-w/2+r,cy-h/2);
+  ctx.arcTo(cx+w/2,cy-h/2,cx+w/2,cy+h/2,r);
+  ctx.arcTo(cx+w/2,cy+h/2,cx-w/2,cy+h/2,r);
+  ctx.arcTo(cx-w/2,cy+h/2,cx-w/2,cy-h/2,r);
+  ctx.arcTo(cx-w/2,cy-h/2,cx+w/2,cy-h/2,r);
+  ctx.closePath();
+}
+
+function drawAstronaut(){
+  const x=arm.pivotX, y=arm.pivotY;
+  ctx.save();
+  const barH=Math.max(16, y-72);
+  ctx.fillStyle='rgba(40,52,80,0.9)'; ctx.fillRect(0,0,W,barH);
+  ctx.strokeStyle='rgba(99,179,237,0.4)'; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(0,barH); ctx.lineTo(W,barH); ctx.stroke();
+  ctx.strokeStyle='rgba(148,163,184,0.55)'; ctx.lineWidth=3; ctx.beginPath(); ctx.moveTo(x,barH); ctx.lineTo(x,y-80); ctx.stroke();
+
+  ctx.fillStyle='#9aa6b5'; rr(x, y-30, 50, 46, 10); ctx.fill();
+  ctx.fillStyle='#7c8a9c'; rr(x, y-34, 20, 12, 3); ctx.fill();
+
+  ctx.strokeStyle='#e9eef5'; ctx.lineCap='round'; ctx.lineWidth=13;
+  ctx.beginPath(); ctx.moveTo(x-20,y-34); ctx.lineTo(x-9,y-2); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x+20,y-34); ctx.lineTo(x+9,y-2); ctx.stroke();
+  ctx.fillStyle='#dbe3ec'; ctx.beginPath(); ctx.arc(x-9,y-1,7,0,6.28); ctx.fill();
+  ctx.beginPath(); ctx.arc(x+9,y-1,7,0,6.28); ctx.fill();
+
+  ctx.fillStyle='#eef3f9'; rr(x, y-30, 46, 46, 16); ctx.fill();
+  ctx.strokeStyle='#c6d0db'; ctx.lineWidth=2; rr(x, y-30, 46, 46, 16); ctx.stroke();
+  ctx.fillStyle='#2f3b50'; rr(x, y-28, 24, 16, 4); ctx.fill();
+  ctx.fillStyle='#22d3ee'; ctx.fillRect(x-8,y-31,5,4);
+  ctx.fillStyle='#fbbf24'; ctx.fillRect(x-1,y-31,5,4);
+  ctx.fillStyle='#f87171'; ctx.fillRect(x+6,y-31,5,4);
+
+  const hy=y-60;
+  ctx.fillStyle='#f5f8fc'; ctx.beginPath(); ctx.arc(x,hy,25,0,6.28); ctx.fill();
+  ctx.lineWidth=3; ctx.strokeStyle='#c6d0db'; ctx.stroke();
+  ctx.strokeStyle='#c6d0db'; ctx.lineWidth=3; ctx.beginPath(); ctx.moveTo(x+19,hy-15); ctx.lineTo(x+26,hy-24); ctx.stroke();
+  ctx.fillStyle='#fbbf24'; ctx.beginPath(); ctx.arc(x+27,hy-25,3.5,0,6.28); ctx.fill();
+  
+  ctx.beginPath(); ctx.arc(x,hy,17,0,6.28);
+  if(visorGrd) ctx.fillStyle = visorGrd; else ctx.fillStyle = '#1e6fd8';
+  ctx.fill();
+  ctx.lineWidth=2.5; ctx.strokeStyle='#aab6c4'; ctx.stroke();
+  
+  ctx.fillStyle='rgba(255,255,255,0.6)'; ctx.beginPath(); ctx.ellipse(x-6,hy-6,4,8,-0.5,0,6.28); ctx.fill();
+  ctx.fillStyle='rgba(255,255,255,0.32)'; ctx.beginPath(); ctx.ellipse(x+6,hy+4,3,5,-0.5,0,6.28); ctx.fill();
+
+  ctx.fillStyle='#475569'; ctx.beginPath(); ctx.arc(x,y,11,0,6.28); ctx.fill();
+  ctx.strokeStyle='#94a3b8'; ctx.lineWidth=2.5; ctx.stroke();
+  ctx.fillStyle='#22d3ee'; ctx.beginPath(); ctx.arc(x,y,4,0,6.28); ctx.fill();
+  if(shieldActive){
+    ctx.strokeStyle='rgba(167,139,250,0.85)'; ctx.lineWidth=3.5; ctx.setLineDash([7,5]);
+    ctx.beginPath(); ctx.arc(x,y-30,46,0,6.28); ctx.stroke(); ctx.setLineDash([]);
+    ctx.strokeStyle='rgba(167,139,250,0.25)'; ctx.lineWidth=8; ctx.beginPath(); ctx.arc(x,y-30,46,0,6.28); ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function loop(now){
+  nowMs=now;
+  const dt=Math.min(0.05,(now-lastTime)/1000);
+  lastTime=now;
+  if(running){
+    update(dt);
+    let currentSec = Math.floor(now / 200);
+    if (currentSec !== lastPowerSec) {
+      updatePowerBar();
+      lastPowerSec = currentSec;
+    }
+  }
+  draw(now);
+  requestAnimationFrame(loop);
+}
+
+function returnHome(){
+  running=false; clearTimers(); items=[]; obstacles=[]; holdingItem=null; armPaused=false;
+  resetPowers(); lastPowerBar='';
+  arm.state='swing'; arm.grabbed=null; arm.length=arm.minLength;
+  hide('hud'); hide('fire-btn'); hide('eject-btn'); hide('mission-card'); hide('toast'); hide('powerup-bar');
+  hide('result-overlay'); hide('gameover-overlay'); hide('campaign-complete-overlay'); hide('lesson-modal');
+  show('ui-center');
+}
+function confirmReturnHome(){ document.getElementById('return-confirm-modal').classList.remove('hidden'); }
+
+window.addEventListener('load',()=>{
+  resize(); buildStars(); requestAnimationFrame(loop);
+  
+  document.getElementById('campaign-btn').onclick   = ()=>{ initAudio(); initGame('campaign'); };
+  document.getElementById('endless-btn').onclick    = ()=>{ initAudio(); initGame('endless'); };
+  document.getElementById('tutorial-btn').onclick   = ()=>{ initAudio(); initGame('tutorial'); };
+  document.getElementById('leaderboard-btn').onclick= ()=>showLeaderboard('campaign');
+  
+  document.getElementById('lb-close-btn').onclick=()=>hide('lb-modal');
+  document.getElementById('lb-back-btn').onclick =()=>hide('lb-modal');
+  document.getElementById('lb-tab-campaign').onclick=()=>setLbTab('campaign');
+  document.getElementById('lb-tab-endless').onclick =()=>setLbTab('endless');
+  document.getElementById('next-btn').onclick=handleNext;
+  document.getElementById('go-restart-btn').onclick=returnHome;
+  document.getElementById('cp-restart-btn').onclick=returnHome;
+  document.getElementById('cp-view-lb-btn').onclick=()=>{ hide('campaign-complete-overlay'); showLeaderboard('campaign'); };
+  document.getElementById('lesson-start-btn').onclick=beginTutorialPractice;
+  document.getElementById('back-home-btn').onclick=confirmReturnHome;
+  document.getElementById('confirm-return-yes').onclick=()=>{ hide('return-confirm-modal'); returnHome(); };
+  document.getElementById('confirm-return-no').onclick =()=>hide('return-confirm-modal');
+  document.getElementById('fire-btn').onclick=(e)=>{ e.stopPropagation(); fireArm(); };
+  document.getElementById('eject-btn').onclick=(e)=>{ e.stopPropagation(); ejectHeld(); };
+
+  canvas.addEventListener('pointerdown',()=>{ if(running && !armPaused) fireArm(); });
+  document.addEventListener('keydown',(e)=>{
+    if(e.key===' '||e.key==='Enter'){
+      if(armPaused && holdingItem){ e.preventDefault(); ejectHeld(); }
+      else if(running){ e.preventDefault(); fireArm(); }
+      else if(!document.getElementById('result-overlay').classList.contains('hidden')){ handleNext(); }
+    }
+  });
+});
+</script>
+</body>
+</html>

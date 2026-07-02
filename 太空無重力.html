@@ -1,0 +1,823 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>漂浮宇航員的救援任務</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        * { -webkit-tap-highlight-color: transparent; touch-action: none; box-sizing: border-box; }
+        body { margin: 0; overflow: hidden; background-color: #020617; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        #canvas-container { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; background: radial-gradient(circle at center, #0f172a 0%, #020617 100%); }
+        #game-canvas { display: block; width: 100%; height: 100%; }
+        
+        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; pointer-events: none; }
+        .panel { background: rgba(255, 255, 255, 0.95); border-radius: 20px; box-shadow: 0 8px 32px rgba(0,0,0,0.3); pointer-events: auto; backdrop-filter: blur(10px); }
+        .shake { animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both; }
+        @keyframes shake {
+            10%, 90% { transform: translate3d(-2px, 2px, 0); }
+            20%, 80% { transform: translate3d(4px, -4px, 0); }
+            30%, 50%, 70% { transform: translate3d(-8px, 6px, 0); }
+            40%, 60% { transform: translate3d(8px, -6px, 0); }
+        }
+        
+        /* Item Selector */
+        .item-grid { display: grid; grid-template-columns: repeat(1, 1fr); gap: 10px; margin-top: 12px; }
+        .item-btn {
+            background: #f1f5f9; border: 2px solid #cbd5e1; border-radius: 12px; padding: 12px;
+            display: flex; align-items: center; justify-content: space-between; cursor: pointer;
+            transition: all 0.2s; user-select: none;
+        }
+        .item-btn:active { transform: scale(0.95); }
+        .item-btn.selected { background: #eff6ff; border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2); }
+        .item-icon { font-size: 1.8rem; }
+        .item-info { text-align: right; }
+        .item-name { font-weight: 800; color: #1e293b; font-size: 1rem; }
+        .item-mass { font-weight: 700; color: #64748b; font-size: 0.8rem; }
+
+        /* Leaderboard table */
+        .lb-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        .lb-table th { background: #e2e8f0; padding: 8px; text-align: left; font-weight: 800; color: #1e293b; }
+        .lb-table td { padding: 8px; border-bottom: 1px solid #f1f5f9; color: #334155; }
+        .lb-table tr:nth-child(even) td { background: #f8fafc; }
+        .lb-table tr.me td { background: #dbeafe; font-weight: 800; color: #1d4ed8; }
+        
+        @media (max-width: 640px) {
+            #question-panel {
+                position: fixed !important; bottom: 0 !important; top: auto !important;
+                right: 0 !important; left: 0 !important; width: 100% !important;
+                border-radius: 20px 20px 0 0 !important; max-height: 50vh; overflow-y: auto;
+                padding-bottom: 24px !important;
+            }
+            #hud { padding: 8px !important; }
+        }
+        
+        /* Modal overlay */
+        .modal-overlay {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 100;
+            display: flex; align-items: center; justify-content: center; padding: 16px;
+        }
+        .modal-box { background: #fff; border-radius: 20px; padding: 28px; max-width: 360px; width: 100%; box-shadow: 0 12px 48px rgba(0,0,0,0.4); pointer-events: auto; }
+        .btn-primary { width: 100%; background: #4f46e5; color: #fff; font-weight: 800; border: none; border-radius: 12px; padding: 14px; font-size: 1.05rem; cursor: pointer; margin-top: 14px; transition: background 0.1s;}
+        .btn-primary:active { background: #3730a3; transform: scale(0.98); }
+        .btn-secondary { width: 100%; background: #f1f5f9; color: #475569; font-weight: 700; border: none; border-radius: 12px; padding: 12px; font-size: 0.95rem; cursor: pointer; margin-top: 8px; transition: background 0.1s;}
+        .btn-secondary:active { background: #e2e8f0; transform: scale(0.98); }
+        
+        /* Canvas 指示器動畫 */
+        .slingshot-hint { position: absolute; pointer-events: none; opacity: 0.7; color: white; font-weight: bold; font-size: 14px; text-shadow: 0 2px 4px rgba(0,0,0,0.8); display: none;}
+    </style>
+</head>
+<body>
+    <div id="canvas-container">
+        <canvas id="game-canvas"></canvas>
+        <div id="throw-hint" class="slingshot-hint">← 預測物品路徑</div>
+        <div id="astro-hint" class="slingshot-hint" style="color: #4ade80;">宇航員路徑 →</div>
+    </div>
+
+    <div id="lb-modal" class="modal-overlay" style="display:none;">
+        <div class="modal-box" style="max-width:420px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+                <h2 style="font-size:1.2rem;font-weight:900;color:#0f172a;">🏆 雲端排行榜</h2>
+                <button id="lb-close-btn" style="background:none;border:none;font-size:1.5rem;cursor:pointer;color:#64748b;line-height:1;">✕</button>
+            </div>
+            <div style="display:flex;gap:8px;margin-bottom:12px;">
+                <button id="lb-tab-campaign" style="flex:1;padding:10px;border-radius:10px;font-weight:800;font-size:0.9rem;border:none;cursor:pointer;background:#4f46e5;color:#fff;">🚀 關卡模式</button>
+                <button id="lb-tab-endless" style="flex:1;padding:10px;border-radius:10px;font-weight:800;font-size:0.9rem;border:none;cursor:pointer;background:#e2e8f0;color:#475569;">🌌 無盡模式</button>
+            </div>
+            <div id="lb-content" style="max-height:340px;overflow-y:auto;border-radius:8px;border:1px solid #e2e8f0;">
+                <p style="color:#94a3b8;font-size:0.9rem;text-align:center;padding:32px 0;">載入中...</p>
+            </div>
+            <button class="btn-secondary" id="lb-back-btn" style="margin-top:16px;">返回主畫面</button>
+        </div>
+    </div>
+
+    <div id="return-confirm-modal" class="modal-overlay" style="display:none;">
+        <div class="modal-box" style="max-width:300px;text-align:center;">
+            <div style="font-size:2.5rem;margin-bottom:8px;">🏠</div>
+            <h3 style="font-size:1.2rem;font-weight:900;color:#0f172a;margin-bottom:6px;">返回主頁？</h3>
+            <p style="color:#64748b;font-size:0.9rem;margin-bottom:20px;">目前的進度將會遺失喔！</p>
+            <button id="confirm-return-yes" class="btn-primary" style="margin-top:0;background:#ef4444;">確認放棄</button>
+            <button id="confirm-return-no" class="btn-secondary">繼續遊玩</button>
+        </div>
+    </div>
+
+    <div id="hud" class="absolute top-0 left-0 w-full p-4 flex justify-between items-start z-20 pointer-events-none hidden">
+        <button id="back-home-btn" onclick="confirmReturnHome()" style="pointer-events:auto;background:rgba(15,23,42,0.8);color:#fff;border:1px solid #334155;border-radius:12px;padding:8px 14px;font-size:0.85rem;font-weight:800;cursor:pointer;backdrop-filter:blur(4px);display:flex;align-items:center;gap:6px;transition:background 0.2s;">
+            ← 放棄任務
+        </button>
+        
+        <div id="hud-stats" style="background:rgba(15,23,42,0.8);border:1px solid #334155;backdrop-filter:blur(4px);color:#fff;padding:8px 16px;border-radius:14px;box-shadow:0 8px 16px rgba(0,0,0,0.5);">
+            <div style="font-size:1.2rem;font-weight:900;color:#fbbf24;">救援人數: <span id="hud-score">0</span></div>
+        </div>
+        
+        <div id="hud-time-wrap" style="background:rgba(15,23,42,0.8);border:1px solid #334155;backdrop-filter:blur(4px);color:#fff;padding:8px 16px;border-radius:14px;text-align:center;">
+            <div id="hud-time-label" style="font-size:0.75rem;color:#94a3b8;font-weight:700;">氧氣剩餘</div>
+            <div id="hud-time" style="font-size:1.5rem;font-weight:900;color:#fff;line-height:1.1;">60s</div>
+        </div>
+
+        <div id="hud-campaign" style="display:none;background:rgba(67,56,202,0.9);border:1px solid #4f46e5;backdrop-filter:blur(4px);color:#fff;padding:8px 16px;border-radius:14px;text-align:center;box-shadow:0 8px 16px rgba(0,0,0,0.5);">
+            <div style="font-size:0.75rem;color:#c7d2fe;font-weight:700;">關卡進度</div>
+            <div style="font-size:1.1rem;font-weight:900;color:#fde047;">第 <span id="hud-campaign-level">1</span>/5 關</div>
+            <div style="font-size:0.8rem;color:#e0e7ff;font-weight:700;margin-top:2px;">⏱ <span id="hud-campaign-timer">0</span>s</div>
+        </div>
+    </div>
+
+    <div id="ui-layer" class="flex items-center justify-center">
+
+        <div id="start-panel" class="panel" style="padding:32px;max-width:360px;width:calc(100% - 32px);margin:16px;text-align:center;">
+            <div style="font-size:3rem;margin-bottom:8px;animation:float 3s ease-in-out infinite;">🧑‍🚀</div>
+            <h1 style="font-size:1.6rem;font-weight:900;color:#0f172a;margin-bottom:6px;line-height:1.2;">漂浮宇航員的<br><span style="color:#2563eb;">救援任務</span></h1>
+            <p style="color:#475569;font-size:0.9rem;margin-bottom:24px;font-weight:600;">利用「作用力與反作用力」在太空中移動！</p>
+            <div style="display:flex;flex-direction:column;gap:12px;">
+                <button id="campaign-btn" style="background:linear-gradient(135deg, #4f46e5, #3b82f6);color:#fff;font-weight:800;font-size:1.1rem;padding:16px;border:none;border-radius:16px;cursor:pointer;box-shadow:0 4px 12px rgba(59,130,246,0.3);">🚀 關卡模式 (5關)</button>
+                <button id="init-btn" style="background:#0f172a;color:#fff;font-weight:800;font-size:1.1rem;padding:16px;border:none;border-radius:16px;cursor:pointer;">🌌 無盡生存模式</button>
+                <div style="display:flex; gap:12px;">
+                    <button id="tutorial-btn" style="flex:1;background:#10b981;color:#fff;font-weight:800;font-size:0.95rem;padding:14px;border:none;border-radius:14px;cursor:pointer;">🎓 教學</button>
+                    <button id="leaderboard-btn" style="flex:1;background:#f1f5f9;color:#334155;border:1px solid #cbd5e1;font-weight:800;font-size:0.95rem;padding:14px;border-radius:14px;cursor:pointer;">🏆 排行榜</button>
+                </div>
+            </div>
+            <p style="font-size:0.75rem;color:#94a3b8;margin-top:16px;font-weight:600;">第一次玩建議先體驗教學模式</p>
+        </div>
+
+        <style>@keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }</style>
+
+        <div id="question-panel" class="panel hidden absolute top-24 right-4" style="padding:20px;width:280px;">
+            <div id="tutorial-badge" class="hidden" style="background:#10b981;color:#fff;text-align:center;font-weight:900;padding:8px;font-size:0.9rem;border-radius:16px 16px 0 0;margin:-20px -20px 16px -20px;">教學進度 1/3</div>
+            <div id="campaign-badge" class="hidden" style="background:#4f46e5;color:#fff;text-align:center;font-weight:900;padding:8px;font-size:0.9rem;border-radius:16px 16px 0 0;margin:-20px -20px 16px -20px;">第 1 關 / 5</div>
+            
+            <h3 style="font-size:1.05rem;font-weight:900;color:#0f172a;border-bottom:2px solid #e2e8f0;padding-bottom:10px;margin-bottom:12px;display:flex;align-items:center;gap:6px;">🎒 選擇丟棄物品</h3>
+            <p id="mission-instruction" style="font-size:0.85rem;color:#475569;margin-bottom:14px;line-height:1.6;font-weight:600;"></p>
+            
+            <p style="font-size:0.75rem;color:#ef4444;font-weight:800;text-align:center;margin-bottom:8px;">手指在畫面上【拖曳】來發射！</p>
+            
+            <div class="item-grid" id="item-selector-grid"></div>
+        </div>
+
+        <div id="status-panel" class="hidden absolute top-32 left-1/2 -translate-x-1/2 pointer-events-none transition-opacity duration-300" style="background:rgba(239,68,68,0.9);backdrop-filter:blur(4px);color:#fff;padding:10px 24px;border-radius:999px;font-weight:900;font-size:1rem;box-shadow:0 8px 24px rgba(0,0,0,0.3); z-index: 50;">
+            ⚠️ 撞擊小行星！氧氣 -2 秒
+        </div>
+
+        <div id="result-panel" class="panel hidden" style="padding:32px;max-width:320px;width:calc(100% - 32px);margin:16px;text-align:center;">
+            <div id="result-icon" style="font-size:3.5rem;margin-bottom:8px;">🎉</div>
+            <h2 id="result-title" style="font-size:1.8rem;font-weight:900;margin-bottom:8px;color:#0f172a;">抵達目標！</h2>
+            <p id="result-score-change" style="font-size:1.1rem;font-weight:800;margin-bottom:12px;color:#2563eb;"></p>
+            <div id="result-msg" style="color:#475569;margin-bottom:20px;font-size:0.9rem;font-weight:600;background:#f8fafc;padding:14px;border-radius:12px;border:1px solid #e2e8f0;line-height:1.5;"></div>
+            <button id="next-btn" class="btn-primary" style="margin-top:0;">繼續</button>
+        </div>
+
+        <div id="gameover-panel" class="panel hidden" style="padding:36px;max-width:320px;width:calc(100% - 32px);margin:16px;text-align:center;border:4px solid #0f172a;">
+            <div style="font-size:3rem;margin-bottom:8px;">☠️</div>
+            <h2 style="font-size:2.2rem;font-weight:900;color:#0f172a;margin-bottom:12px;">氧氣耗盡</h2>
+            <p style="color:#64748b;font-size:0.9rem;margin-bottom:4px;font-weight:700;">成功救援次數</p>
+            <p id="final-score" style="font-size:3.5rem;font-weight:900;color:#fbbf24;margin-bottom:16px;line-height:1;text-shadow:0 4px 12px rgba(251,191,36,0.3);">0</p>
+            <p style="color:#64748b;font-size:0.85rem;margin-bottom:4px;font-weight:700;">⏱ 總生存時間</p>
+            <p id="final-time-endless" style="font-size:1.4rem;font-weight:900;color:#4f46e5;margin-bottom:24px;">—</p>
+            <button id="restart-game-btn" class="btn-primary" style="background:#0f172a;">返回主畫面</button>
+        </div>
+
+        <div id="campaign-complete-panel" class="panel hidden" style="padding:36px;max-width:320px;width:calc(100% - 32px);margin:16px;text-align:center;border:4px solid #f59e0b;">
+            <div style="font-size:3.5rem;margin-bottom:8px;">🏆</div>
+            <h2 style="font-size:1.8rem;font-weight:900;color:#b45309;margin-bottom:8px;">任務全數達成！</h2>
+            <p style="color:#64748b;font-size:0.9rem;margin-bottom:4px;font-weight:700;">過關數</p>
+            <p id="campaign-correct-count" style="font-size:2.5rem;font-weight:900;color:#10b981;margin-bottom:12px;line-height:1;">5/5</p>
+            <p style="color:#64748b;font-size:0.85rem;margin-bottom:4px;font-weight:700;">總耗費時間</p>
+            <p id="campaign-total-time" style="font-size:1.8rem;font-weight:900;color:#4f46e5;margin-bottom:24px;">0s</p>
+            <button id="view-lb-btn" class="btn-primary" style="margin-bottom:12px;">🏆 查看排行榜</button>
+            <button id="campaign-restart-btn" class="btn-secondary">返回主畫面</button>
+        </div>
+    </div>
+
+    <script>
+        // 【新增】接收主網頁傳來的學生資料
+        const urlParams = new URLSearchParams(window.location.search);
+        const studentClass = urlParams.get('class') || '未設定班別';
+        const studentId = urlParams.get('id') || '未設定學號';
+
+        const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwHKY-YDXziCb0eCZtW-GQ9MGUQshKIIJk1qJgX7TPqTL1YwThCrvCld5YNSH9CSwpPew/exec"; 
+
+        // 【新增】上傳紀錄函數
+        function sendDataToSheet(finalScore) {
+            const timeSpent = Math.round((Date.now() - (isCampaignMode ? campaignStartTime : endlessStartTime)) / 1000);
+            const gameModeName = isCampaignMode ? '太空無重力(關卡)' : '太空無重力(無盡)';
+            const data = {
+                gameName: gameModeName,
+                studentClass: studentClass,
+                studentId: studentId,
+                playDate: new Date().toLocaleDateString('zh-HK'),
+                playTime: timeSpent + "秒",
+                score: finalScore
+            };
+            fetch(GAS_WEB_APP_URL, {
+                method: 'POST',
+                body: JSON.stringify(data),
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' }
+            }).then(res => res.json()).then(res => console.log('成績上傳成功', res)).catch(err => console.error('成績上傳失敗', err));
+        }
+
+        const canvas = document.getElementById('game-canvas');
+        const ctx = canvas.getContext('2d');
+        let cw, ch;
+        let animationId;
+        let lastTime = null;
+        
+        const ASTRO_MASS = 80; 
+        const DRAG_MULTIPLIER = 0.05; 
+        const FRICTION = 1; 
+
+        const ITEMS = [
+            { id: 'apple', name: '蘋果', emoji: '🍎', mass: 0.5, desc: '很輕，飛很慢' },
+            { id: 'wrench', name: '扳手', emoji: '🔧', mass: 5, desc: '中等重量' },
+            { id: 'sandbag', name: '大工具箱', emoji: '🧰', mass: 30, desc: '超重！反作用力極大' }
+        ];
+        let selectedItemIndex = 1; 
+
+        let astronaut = { x: 0, y: 0, vx: 0, vy: 0, radius: 25, rot: 0, vRot: 0 };
+        let target = { x: 0, y: 0, radius: 50, active: false, stayTime: 0 };
+        let projectiles = [];
+        let stars = [];
+        let obstacles = []; 
+        
+        let isDragging = false;
+        let dragStart = { x: 0, y: 0 };
+        let dragCurrent = { x: 0, y: 0 };
+
+        let score = 0, timeLeft = 60, level = 1;
+        let isGameOver = false, isResultShowing = false;
+        
+        let isTutorialMode = false, tutorialStep = 0, tutorialCompleted = false;
+        const tutorialSteps = ['basic', 'mass', 'target'];
+        
+        let isCampaignMode = false, campaignStep = 0, campaignSuccessCount = 0;
+        let campaignStartTime = 0, campaignElapsed = 0, campaignTimerInterval = null;
+        let endlessStartTime = 0, timerInterval = null;
+        
+        const CAMPAIGN_LEVELS = [
+            { dist: 200, time: 30, obsCount: 0, targetSize: 50, desc: "初次飛行。請進入目標範圍並<span class='text-green-600'>停留 3 秒</span>！" },
+            { dist: 400, time: 35, obsCount: 4, targetSize: 50, desc: "太空中出現了小行星！小心避開它們，停留在目標上 3 秒。" },
+            { dist: 500, time: 30, obsCount: 8, targetSize: 50, desc: "障礙物變多了！使用重物快速推進，並適時丟出物品煞車。" },
+            { dist: 450, time: 30, obsCount: 12, targetSize: 40, desc: "目標變小且被小行星包圍，精準控制你的軌跡！" },
+            { dist: 600, time: 25, obsCount: 18, targetSize: 45, desc: "終極挑戰！穿梭在隕石群中，安全對接停留 3 秒！" }
+        ];
+
+        const DOM = {
+            start: document.getElementById('start-panel'),
+            hud: document.getElementById('hud'),
+            question: document.getElementById('question-panel'),
+            status: document.getElementById('status-panel'),
+            result: document.getElementById('result-panel'),
+            gameover: document.getElementById('gameover-panel'),
+            campaignComplete: document.getElementById('campaign-complete-panel'),
+            itemGrid: document.getElementById('item-selector-grid')
+        };
+
+        let statusTimeout;
+        function showStatusMessage(msg, duration = 2000) {
+            const el = DOM.status;
+            el.innerText = msg;
+            el.classList.remove('hidden');
+            clearTimeout(statusTimeout);
+            statusTimeout = setTimeout(() => {
+                el.classList.add('hidden');
+            }, duration);
+        }
+
+        async function fetchLeaderboardFromCloud(mode) {
+            if (!GAS_WEB_APP_URL) return [];
+            try {
+                const response = await fetch(`${GAS_WEB_APP_URL}?mode=${mode}`);
+                return await response.json();
+            } catch (err) { return []; }
+        }
+
+        async function renderLeaderboard(mode) {
+            const el = document.getElementById('lb-content');
+            el.innerHTML = '<p style="color:#94a3b8;font-size:0.9rem;text-align:center;padding:32px 0;">⏳ 雲端資料載入中...</p>';
+            const entries = await fetchLeaderboardFromCloud(mode);
+            if (entries.length === 0) { el.innerHTML = '<p style="color:#94a3b8;font-size:0.9rem;text-align:center;padding:32px 0;">暫無紀錄或連線失敗</p>'; return; }
+            
+            let rows = entries.map((e, i) => {
+                const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `<span style="color:#94a3b8;font-weight:900;">${i+1}</span>`;
+                const right = mode === 'campaign' ? `${e.correct}/5 關 | ⏱ ${e.time}s` : `${e.score} 人 | ⏱ ${e.time}s`;
+                return `<tr><td>${medal}</td><td style="font-weight:700;">${e.cls} ${e.num}</td><td style="font-weight:800;">${right}</td></tr>`;
+            }).join('');
+            el.innerHTML = `<table class="lb-table"><thead><tr><th>排名</th><th>學生代號</th><th>${mode === 'campaign' ? '成績' : '救援人數'}</th></tr></thead><tbody>${rows}</tbody></table>`;
+        }
+
+        window.onload = function () {
+            resizeCanvas(); window.addEventListener('resize', resizeCanvas);
+            initStars();
+            
+            document.getElementById('campaign-btn').addEventListener('click', () => initGame('campaign'));
+            document.getElementById('init-btn').addEventListener('click', () => initGame('endless'));
+            document.getElementById('tutorial-btn').addEventListener('click', () => initGame('tutorial'));
+            document.getElementById('leaderboard-btn').addEventListener('click', () => showLeaderboard('campaign'));
+
+            document.getElementById('lb-close-btn').addEventListener('click', () => { document.getElementById('lb-modal').style.display = 'none'; });
+            document.getElementById('lb-back-btn').addEventListener('click', () => { document.getElementById('lb-modal').style.display = 'none'; });
+            document.getElementById('lb-tab-campaign').addEventListener('click', () => { setLbTab('campaign'); });
+            document.getElementById('lb-tab-endless').addEventListener('click', () => { setLbTab('endless'); });
+
+            document.getElementById('next-btn').addEventListener('click', handleNextBtn);
+            document.getElementById('restart-game-btn').addEventListener('click', returnToStartMenu);
+            document.getElementById('campaign-restart-btn').addEventListener('click', returnToStartMenu);
+            document.getElementById('view-lb-btn').addEventListener('click', () => showLeaderboard('campaign'));
+
+            document.getElementById('confirm-return-yes').addEventListener('click', () => {
+                document.getElementById('return-confirm-modal').style.display = 'none'; returnToStartMenu();
+            });
+            document.getElementById('confirm-return-no').addEventListener('click', () => { document.getElementById('return-confirm-modal').style.display = 'none'; });
+
+            renderItemSelector();
+            setupCanvasInput();
+            requestAnimationFrame(gameLoop);
+        };
+
+        function resizeCanvas() {
+            cw = canvas.width = window.innerWidth;
+            ch = canvas.height = window.innerHeight;
+            initStars(); 
+        }
+
+        function showLeaderboard(tab) { setLbTab(tab); document.getElementById('lb-modal').style.display = 'flex'; }
+        function setLbTab(tab) {
+            ['campaign', 'endless'].forEach(t => {
+                const btn = document.getElementById(`lb-tab-${t}`);
+                btn.style.background = tab === t ? '#4f46e5' : '#e2e8f0'; btn.style.color = tab === t ? '#fff' : '#475569';
+            });
+            renderLeaderboard(tab);
+        }
+        function confirmReturnHome() { document.getElementById('return-confirm-modal').style.display = 'flex'; }
+
+        function renderItemSelector() {
+            DOM.itemGrid.innerHTML = ITEMS.map((item, i) => `
+                <div class="item-btn ${selectedItemIndex === i ? 'selected' : ''}" onclick="selectItem(${i})">
+                    <div style="display:flex; align-items:center; gap:12px;">
+                        <div class="item-icon">${item.emoji}</div>
+                        <div style="text-align:left;">
+                            <div class="item-name">${item.name}</div>
+                            <div class="item-mass" style="color:#ef4444;">${item.desc}</div>
+                        </div>
+                    </div>
+                    <div class="item-info">
+                        <div class="item-mass">${item.mass} kg</div>
+                    </div>
+                </div>
+            `).join('');
+        }
+        function selectItem(idx) { selectedItemIndex = idx; renderItemSelector(); }
+
+        function initGame(mode) {
+            isTutorialMode = (mode === 'tutorial'); isCampaignMode = (mode === 'campaign');
+            tutorialStep = 0; tutorialCompleted = false; campaignStep = 0; campaignSuccessCount = 0;
+            lastTime = null; 
+            
+            DOM.start.classList.add('hidden'); DOM.hud.classList.remove('hidden');
+            const hs = document.getElementById('hud-stats'), ht = document.getElementById('hud-time-wrap'), hc = document.getElementById('hud-campaign');
+            
+            if (isTutorialMode) { hs.style.display = 'none'; ht.style.display = 'none'; hc.style.display = 'none'; }
+            else if (isCampaignMode) {
+                hs.style.display = 'none'; ht.style.display = 'none'; hc.style.display = 'block';
+                campaignStartTime = Date.now();
+                if(campaignTimerInterval) clearInterval(campaignTimerInterval);
+                campaignTimerInterval = setInterval(() => {
+                    if (!isGameOver && !isResultShowing) {
+                        campaignElapsed = Math.floor((Date.now() - campaignStartTime) / 1000);
+                        document.getElementById('hud-campaign-timer').textContent = campaignElapsed;
+                    }
+                }, 500);
+            } else {
+                hs.style.display = 'block'; ht.style.display = 'block'; hc.style.display = 'none';
+                endlessStartTime = Date.now();
+            }
+            resetFullGame();
+        }
+
+        function returnToStartMenu() {
+            isGameOver = true;
+            lastTime = null;
+            if(timerInterval) clearInterval(timerInterval);
+            if(campaignTimerInterval) clearInterval(campaignTimerInterval);
+            DOM.hud.classList.add('hidden'); DOM.question.classList.add('hidden');
+            DOM.result.classList.add('hidden'); DOM.gameover.classList.add('hidden'); DOM.campaignComplete.classList.add('hidden');
+            DOM.start.classList.remove('hidden');
+        }
+
+        function resetFullGame() {
+            score = 0; timeLeft = isCampaignMode ? 0 : 60; level = 1;
+            isGameOver = false; isResultShowing = false;
+            if (!isTutorialMode && !isCampaignMode) updateHUD();
+            DOM.gameover.classList.add('hidden'); DOM.campaignComplete.classList.add('hidden');
+            
+            if(timerInterval) clearInterval(timerInterval);
+            if (!isTutorialMode && !isCampaignMode) {
+                timerInterval = setInterval(() => {
+                    if(isGameOver || isResultShowing) return;
+                    timeLeft--; updateHUD();
+                    if(timeLeft <= 0) triggerGameOver();
+                }, 1000);
+            }
+            startNextRound();
+        }
+
+        function updateHUD() {
+            if (isTutorialMode) return;
+            document.getElementById('hud-score').innerText = score;
+            document.getElementById('hud-time').innerText = timeLeft + 's';
+            document.getElementById('hud-time').style.color = timeLeft <= 10 ? '#ef4444' : '#fff';
+        }
+
+        function triggerGameOver() {
+            isGameOver = true; clearInterval(timerInterval);
+            DOM.question.classList.add('hidden'); DOM.result.classList.add('hidden'); DOM.gameover.classList.remove('hidden');
+            document.getElementById('final-score').innerText = score;
+            const tTime = Math.floor((Date.now() - endlessStartTime) / 1000);
+            document.getElementById('final-time-endless').textContent = `${tTime}s`;
+            
+            const btn = document.getElementById('restart-game-btn');
+            btn.innerText = "返回主畫面"; btn.disabled = false;
+            sendDataToSheet(score); // 【新增】上傳紀錄
+        }
+
+        function startNextRound() {
+            isResultShowing = false; projectiles = [];
+            astronaut.x = cw / 2; astronaut.y = ch / 2; astronaut.vx = 0; astronaut.vy = 0; astronaut.rot = 0; astronaut.vRot = 0;
+            DOM.status.classList.add('hidden');
+            lastTime = null; 
+            target.stayTime = 0; 
+            
+            let targetDist = 250;
+            target.radius = 50; 
+            let obsCount = 0;
+
+            if (isCampaignMode) {
+                if (campaignStep >= CAMPAIGN_LEVELS.length) { handleNextBtn(); return; }
+                const lvl = CAMPAIGN_LEVELS[campaignStep];
+                targetDist = lvl.dist; timeLeft = lvl.time; target.radius = lvl.targetSize || 50;
+                obsCount = lvl.obsCount || 0;
+                
+                document.getElementById('tutorial-badge').classList.add('hidden');
+                document.getElementById('campaign-badge').classList.remove('hidden');
+                document.getElementById('campaign-badge').innerText = `第 ${campaignStep+1} 關 / 5`;
+                document.getElementById('hud-campaign-level').innerText = campaignStep + 1;
+                
+                if(timerInterval) clearInterval(timerInterval);
+                timerInterval = setInterval(() => {
+                    if(isGameOver || isResultShowing) return;
+                    timeLeft--;
+                    if(timeLeft <= 0) { isResultShowing=true; finishLevel(false, "氧氣耗盡！"); }
+                }, 1000);
+                
+            } else if (isTutorialMode) {
+                document.getElementById('tutorial-badge').classList.remove('hidden');
+                document.getElementById('tutorial-badge').innerText = `教學 ${tutorialStep + 1}/3`;
+                document.getElementById('campaign-badge').classList.add('hidden');
+                targetDist = 200;
+                obsCount = tutorialStep === 2 ? 3 : 0; 
+            } else {
+                document.getElementById('tutorial-badge').classList.add('hidden');
+                document.getElementById('campaign-badge').classList.add('hidden');
+                targetDist = Math.min(200 + level * 50, Math.min(cw, ch)/2 - 50);
+                obsCount = Math.min(20, level * 2); 
+            }
+
+            let angle = Math.random() * Math.PI * 2;
+            target.x = cw/2 + Math.cos(angle) * targetDist;
+            target.y = ch/2 + Math.sin(angle) * targetDist;
+            target.x = Math.max(target.radius+20, Math.min(cw - target.radius-20, target.x));
+            target.y = Math.max(target.radius+20, Math.min(ch - target.radius-20, target.y));
+            target.active = true;
+
+            obstacles = [];
+            for (let i = 0; i < obsCount; i++) {
+                let ox, oy, distToAstro, distToTarget;
+                let attempts = 0;
+                let r = Math.random() * 25 + 15;
+                do {
+                    ox = Math.random() * (cw - r*2) + r;
+                    oy = Math.random() * (ch - r*2) + r;
+                    distToAstro = Math.hypot(ox - cw/2, oy - ch/2);
+                    distToTarget = Math.hypot(ox - target.x, oy - target.y);
+                    attempts++;
+                } while ((distToAstro < 120 || distToTarget < 120) && attempts < 100);
+                
+                obstacles.push({x: ox, y: oy, radius: r});
+            }
+
+            updateMissionUI();
+            DOM.result.classList.add('hidden'); DOM.question.classList.remove('hidden');
+        }
+
+        function updateMissionUI() {
+            const el = document.getElementById('mission-instruction');
+            if (isTutorialMode) {
+                if (tutorialStep === 0) el.innerHTML = `<span style="color:#2563eb;font-weight:900;">【步驟 1：牛頓第三運動定律】</span><br>要往目標前進，你必須把物品往<span style="color:#ef4444;font-weight:800;">反方向</span>丟！<br><br>👉 試著在畫面上往反方向拖曳，並在目標上<span style="font-weight:800;color:#10b981;">停留 3 秒鐘</span>。`;
+                else if (tutorialStep === 1) el.innerHTML = `<span style="color:#10b981;font-weight:900;">【步驟 2：質量的影響】</span><br>丟太輕的蘋果，宇航員動得很慢。質量(m)越大，反作用力越大！<br><br>👉 試著在下方切換成【大工具箱】並到達目標停留 3 秒！`;
+                else el.innerHTML = `<span style="color:#f59e0b;font-weight:900;">【步驟 3：煞車與對接】</span><br>速度太快會飛過頭！你可以往反方向丟東西來煞車。<br><br>👉 避開小行星，在目標範圍內【停留 3 秒】即可獲勝！`;
+            } else if (isCampaignMode) {
+                const lvl = CAMPAIGN_LEVELS[campaignStep];
+                el.innerHTML = `⚠️ <span style="font-weight:800;color:#ef4444;">氧氣限制：${lvl.time} 秒</span><br><br>${lvl.desc}`;
+            } else {
+                el.innerHTML = `請選擇適合質量的物品拋出，利用反作用力推動自己抵達太空艙，並<span style="color:#10b981;font-weight:800;">停留在範圍內 3 秒鐘</span>以完成救援。小心避開小行星！`;
+            }
+        }
+
+        function handleNextBtn() {
+            if (tutorialCompleted) { returnToStartMenu(); } 
+            else if (isCampaignMode && campaignStep >= CAMPAIGN_LEVELS.length) {
+                clearInterval(campaignTimerInterval);
+                DOM.result.classList.add('hidden'); DOM.campaignComplete.classList.remove('hidden');
+                document.getElementById('campaign-correct-count').textContent = `${campaignSuccessCount}/5`;
+                document.getElementById('campaign-total-time').textContent = `${campaignElapsed}s`;
+                
+                const btn = document.getElementById('view-lb-btn');
+                btn.innerText = "🏆 查看排行榜"; btn.disabled = false;
+                sendDataToSheet(campaignSuccessCount); // 【新增】上傳紀錄
+            } else { startNextRound(); }
+        }
+
+        function setupCanvasInput() {
+            const down = (e) => {
+                if (isResultShowing || isGameOver) return;
+                const touch = e.touches ? e.touches[0] : e;
+                isDragging = true;
+                dragStart = { x: touch.clientX, y: touch.clientY };
+                dragCurrent = { x: touch.clientX, y: touch.clientY };
+                document.getElementById('throw-hint').style.display = 'block';
+                document.getElementById('astro-hint').style.display = 'block';
+            };
+            const move = (e) => {
+                if (!isDragging) return;
+                const touch = e.touches ? e.touches[0] : e;
+                dragCurrent = { x: touch.clientX, y: touch.clientY };
+                
+                const dx = dragCurrent.x - dragStart.x; const dy = dragCurrent.y - dragStart.y;
+                const th = document.getElementById('throw-hint');
+                th.style.left = (astronaut.x + dx + 20) + 'px'; th.style.top = (astronaut.y + dy) + 'px';
+                
+                const currentItem = ITEMS[selectedItemIndex];
+                const velocityRatio = currentItem.mass / ASTRO_MASS;
+                const ah = document.getElementById('astro-hint');
+                ah.style.left = (astronaut.x - dx * velocityRatio - 80) + 'px'; ah.style.top = (astronaut.y - dy * velocityRatio) + 'px';
+            };
+            const up = (e) => {
+                if (!isDragging) return;
+                isDragging = false;
+                document.getElementById('throw-hint').style.display = 'none';
+                document.getElementById('astro-hint').style.display = 'none';
+                
+                const dx = dragCurrent.x - dragStart.x;
+                const dy = dragCurrent.y - dragStart.y;
+                const dist = Math.hypot(dx, dy);
+                
+                if (dist > 10) {
+                    const currentItem = ITEMS[selectedItemIndex];
+                    const objVx = dx * DRAG_MULTIPLIER;
+                    const objVy = dy * DRAG_MULTIPLIER;
+                    
+                    projectiles.push({
+                        x: astronaut.x, y: astronaut.y,
+                        vx: objVx, vy: objVy,
+                        emoji: currentItem.emoji, size: currentItem.mass > 10 ? 30 : 20
+                    });
+
+                    const astroVxChange = - (currentItem.mass / ASTRO_MASS) * objVx;
+                    const astroVyChange = - (currentItem.mass / ASTRO_MASS) * objVy;
+                    
+                    astronaut.vx += astroVxChange;
+                    astronaut.vy += astroVyChange;
+                    astronaut.vRot = (Math.random() - 0.5) * 0.1 * (currentItem.mass); 
+                }
+            };
+
+            canvas.addEventListener('mousedown', down); canvas.addEventListener('mousemove', move); window.addEventListener('mouseup', up);
+            canvas.addEventListener('touchstart', down, {passive:false}); canvas.addEventListener('touchmove', (e)=>{e.preventDefault(); move(e);}, {passive:false}); window.addEventListener('touchend', up);
+        }
+
+        function checkCollisions(dt) {
+            if(!target.active || isResultShowing) return;
+            
+            const distToTarget = Math.hypot(astronaut.x - target.x, astronaut.y - target.y);
+            if (distToTarget < astronaut.radius + target.radius) {
+                target.stayTime += dt;
+                if (target.stayTime >= 3000) {
+                    finishLevel(true);
+                    target.stayTime = 0;
+                }
+            } else {
+                target.stayTime = 0; 
+            }
+
+            for (let obs of obstacles) {
+                let dx = astronaut.x - obs.x;
+                let dy = astronaut.y - obs.y;
+                let dist = Math.hypot(dx, dy);
+                
+                if (dist === 0) { dx = 0.1; dy = 0.1; dist = 0.1414; }
+
+                const minDist = astronaut.radius + obs.radius;
+                
+                if (dist < minDist) {
+                    const nx = dx / dist;
+                    const ny = dy / dist;
+                    const overlap = minDist - dist;
+                    astronaut.x += nx * overlap;
+                    astronaut.y += ny * overlap;
+                    
+                    const dot = astronaut.vx * nx + astronaut.vy * ny;
+                    if (dot < 0) { 
+                        astronaut.vx = astronaut.vx - 2 * dot * nx; 
+                        astronaut.vy = astronaut.vy - 2 * dot * ny;
+                        astronaut.vRot += (Math.random() - 0.5) * 0.3; 
+                        
+                        showStatusMessage("⚠️ 撞擊小行星！氧氣 -2 秒", 1500);
+                        if (!isTutorialMode) {
+                            timeLeft -= 2;
+                            if (timeLeft <= 0) {
+                                timeLeft = 0;
+                                updateHUD();
+                                if (isCampaignMode) {
+                                    finishLevel(false, "氧氣耗盡！");
+                                } else {
+                                    triggerGameOver();
+                                }
+                                return; 
+                            }
+                            updateHUD();
+                        }
+                    }
+                }
+            }
+            
+            if (astronaut.x < astronaut.radius) { astronaut.x = astronaut.radius; astronaut.vx *= -1; astronaut.vRot += 0.1; }
+            else if (astronaut.x > cw - astronaut.radius) { astronaut.x = cw - astronaut.radius; astronaut.vx *= -1; astronaut.vRot += 0.1; }
+            if (astronaut.y < astronaut.radius) { astronaut.y = astronaut.radius; astronaut.vy *= -1; astronaut.vRot += 0.1; }
+            else if (astronaut.y > ch - astronaut.radius) { astronaut.y = ch - astronaut.radius; astronaut.vy *= -1; astronaut.vRot += 0.1; }
+            
+            const MAX_SPEED = 25;
+            const currentSpeed = Math.hypot(astronaut.vx, astronaut.vy);
+            if (currentSpeed > MAX_SPEED) {
+                astronaut.vx = (astronaut.vx / currentSpeed) * MAX_SPEED;
+                astronaut.vy = (astronaut.vy / currentSpeed) * MAX_SPEED;
+            }
+        }
+
+        function finishLevel(success, customMsg = null) {
+            isResultShowing = true; target.active = false; clearInterval(timerInterval);
+            DOM.question.classList.add('hidden'); DOM.result.classList.remove('hidden');
+            
+            const title = document.getElementById('result-title'); const scMsg = document.getElementById('result-score-change');
+            const msg = document.getElementById('result-msg'); const nextBtn = document.getElementById('next-btn');
+            const icon = document.getElementById('result-icon');
+
+            if (isCampaignMode) {
+                campaignStep++;
+                if (success) campaignSuccessCount++;
+                icon.innerText = success ? "🎉" : "💥";
+                title.innerText = success ? "對接成功！" : "任務失敗！";
+                title.style.color = success ? "#1d4ed8" : "#ef4444";
+                scMsg.innerText = customMsg || (success ? "完美停留 3 秒完成對接！" : "未能在時間內安全抵達。");
+                msg.innerHTML = `這是第 ${campaignStep} 關的結果。<br>總共需完成 5 關。`;
+                nextBtn.innerText = campaignStep >= CAMPAIGN_LEVELS.length ? "查看總結" : "下一關 →";
+            } else if (isTutorialMode) {
+                tutorialStep++;
+                icon.innerText = success ? "🎓" : "🤔";
+                title.innerText = success ? "做的好！" : "再試一次！";
+                title.style.color = success ? "#10b981" : "#f59e0b";
+                scMsg.innerText = success ? "你掌握了反作用力的精髓！" : "似乎不太順利喔。";
+                msg.innerHTML = "繼續跟著指示練習吧！";
+                
+                if (tutorialStep >= tutorialSteps.length && success) {
+                    tutorialCompleted = true; nextBtn.innerText = "結束教學";
+                    msg.innerHTML = "你已經準備好面對正式任務了！";
+                } else if (!success) { tutorialStep--; nextBtn.innerText = "重新嘗試"; }
+                else { nextBtn.innerText = "下一課 →"; }
+            } else {
+                icon.innerText = success ? "🌟" : "💀";
+                title.innerText = success ? "對接成功！" : "遊戲結束";
+                title.style.color = success ? "#fbbf24" : "#ef4444";
+                if (success) {
+                    const timeBonus = 10; score++; level++; timeLeft += timeBonus;
+                    scMsg.innerText = `+1 救援人數 | +${timeBonus}s 氧氣`;
+                    msg.innerHTML = `太棒了！目前的總救援數：<strong>${score}</strong> 人`;
+                    nextBtn.innerText = "前往下一個目標";
+                } else {
+                    scMsg.innerText = customMsg || "氧氣耗盡";
+                    msg.innerHTML = `最終救援數：<strong>${score}</strong> 人`;
+                    nextBtn.innerText = "查看結果";
+                    nextBtn.onclick = () => triggerGameOver();
+                }
+            }
+        }
+
+        function initStars() {
+            stars = [];
+            for(let i=0; i<150; i++) stars.push({ x: Math.random()*cw, y: Math.random()*ch, size: Math.random()*2, opacity: Math.random() });
+        }
+        function drawBackground() {
+            ctx.clearRect(0, 0, cw, ch);
+            stars.forEach(s => {
+                ctx.fillStyle = `rgba(255, 255, 255, ${s.opacity})`;
+                ctx.beginPath(); ctx.arc(s.x, s.y, s.size, 0, Math.PI*2); ctx.fill();
+                s.opacity += (Math.random()-0.5)*0.1;
+                if(s.opacity < 0.1) s.opacity = 0.1; if(s.opacity > 1) s.opacity = 1;
+            });
+        }
+
+        function drawEntities() {
+            if (target.active) {
+                ctx.save(); ctx.translate(target.x, target.y);
+                const grad = ctx.createRadialGradient(0,0,target.radius*0.5, 0,0,target.radius*1.5);
+                grad.addColorStop(0, 'rgba(59, 130, 246, 0.5)'); grad.addColorStop(1, 'rgba(59, 130, 246, 0)');
+                ctx.fillStyle = grad; ctx.beginPath(); ctx.arc(0,0,target.radius*1.5, 0, Math.PI*2); ctx.fill();
+                
+                ctx.fillStyle = '#cbd5e1'; ctx.beginPath(); ctx.arc(0,0,target.radius, 0, Math.PI*2); ctx.fill();
+                ctx.fillStyle = '#3b82f6'; ctx.beginPath(); ctx.arc(0,0,target.radius*0.6, 0, Math.PI*2); ctx.fill();
+                ctx.fillStyle = '#0f172a'; ctx.beginPath(); ctx.arc(0,0,target.radius*0.4, 0, Math.PI*2); ctx.fill();
+                
+                ctx.fillStyle = '#1e3a8a';
+                ctx.fillRect(-target.radius*2.0, -10, target.radius*1.2, 20);
+                ctx.fillRect(target.radius*0.8, -10, target.radius*1.2, 20);
+                
+                if (target.stayTime > 0) {
+                    const progress = Math.min(1, target.stayTime / 3000);
+                    ctx.beginPath();
+                    ctx.arc(0, 0, target.radius + 15, -Math.PI/2, -Math.PI/2 + progress * Math.PI * 2);
+                    ctx.strokeStyle = '#4ade80'; 
+                    ctx.lineWidth = 6;
+                    ctx.lineCap = 'round';
+                    ctx.stroke();
+                    
+                    ctx.fillStyle = '#4ade80';
+                    ctx.font = 'bold 20px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.fillText((3 - target.stayTime/1000).toFixed(1) + 's', 0, -target.radius - 30);
+                }
+                
+                ctx.restore();
+            }
+
+            for (let obs of obstacles) {
+                ctx.save(); ctx.translate(obs.x, obs.y);
+                ctx.fillStyle = '#475569';
+                ctx.beginPath(); ctx.arc(0, 0, obs.radius, 0, Math.PI*2); ctx.fill();
+                ctx.fillStyle = '#334155';
+                ctx.beginPath(); ctx.arc(-obs.radius*0.3, -obs.radius*0.3, obs.radius*0.25, 0, Math.PI*2); ctx.fill();
+                ctx.beginPath(); ctx.arc(obs.radius*0.4, obs.radius*0.2, obs.radius*0.2, 0, Math.PI*2); ctx.fill();
+                ctx.restore();
+            }
+
+            ctx.font = "24px Arial"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+            for(let i=projectiles.length-1; i>=0; i--) {
+                let p = projectiles[i];
+                p.x += p.vx; p.y += p.vy;
+                ctx.fillText(p.emoji, p.x, p.y);
+                if(p.x<-50 || p.x>cw+50 || p.y<-50 || p.y>ch+50) projectiles.splice(i, 1);
+            }
+
+            astronaut.x += astronaut.vx; astronaut.y += astronaut.vy;
+            astronaut.vx *= FRICTION; astronaut.vy *= FRICTION;
+            astronaut.rot += astronaut.vRot; 
+
+            ctx.save(); ctx.translate(astronaut.x, astronaut.y); ctx.rotate(astronaut.rot);
+            ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(0, 0, astronaut.radius, 0, Math.PI*2); ctx.fill();
+            ctx.strokeStyle = '#94a3b8'; ctx.lineWidth = 3; ctx.stroke();
+            ctx.fillStyle = '#e2e8f0'; ctx.fillRect(-astronaut.radius-5, -15, 10, 30);
+            ctx.fillStyle = '#0ea5e9'; ctx.beginPath(); ctx.ellipse(10, 0, 12, 18, 0, 0, Math.PI*2); ctx.fill();
+            const speed = Math.hypot(astronaut.vx, astronaut.vy);
+            if (speed > 1) {
+                ctx.fillStyle = `rgba(255, 255, 255, ${Math.min(speed*0.1, 0.5)})`;
+                ctx.beginPath(); ctx.arc(-astronaut.radius-10, 0, 8, 0, Math.PI*2); ctx.fill();
+            }
+            ctx.restore();
+
+            if (isDragging) {
+                ctx.save();
+                ctx.beginPath(); ctx.moveTo(astronaut.x, astronaut.y);
+                const dx = dragCurrent.x - dragStart.x; const dy = dragCurrent.y - dragStart.y;
+                ctx.lineTo(astronaut.x + dx, astronaut.y + dy);
+                ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 4; ctx.setLineDash([10, 10]); ctx.stroke();
+                
+                const currentItem = ITEMS[selectedItemIndex];
+                const velocityRatio = currentItem.mass / ASTRO_MASS;
+                ctx.beginPath(); ctx.moveTo(astronaut.x, astronaut.y);
+                ctx.lineTo(astronaut.x - dx * velocityRatio * 5, astronaut.y - dy * velocityRatio * 5); 
+                ctx.strokeStyle = 'rgba(74,222,128,0.8)'; ctx.lineWidth = 6; ctx.setLineDash([5, 5]); ctx.stroke();
+                ctx.restore();
+            }
+        }
+
+        function gameLoop(timestamp) {
+            if (!lastTime) lastTime = timestamp;
+            const dt = timestamp - lastTime;
+            lastTime = timestamp;
+
+            drawBackground();
+            if (!isGameOver && !isResultShowing) {
+                drawEntities();
+                checkCollisions(dt);
+            }
+            animationId = requestAnimationFrame(gameLoop);
+        }
+    </script>
+</body>
+</html>

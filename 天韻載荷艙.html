@@ -1,0 +1,886 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>天韻載荷艙 · 載荷專家任務控制台</title>
+<style>
+  :root{
+    --void:#070b13;
+    --void2:#0c1320;
+    --panel:#141c2b;
+    --panel2:#0f1622;
+    --bezel:#27313f;
+    --bezel-hi:#3a4658;
+    --line:#1f2a3a;
+    --cyan:#3fe0d6;
+    --cyan-soft:#6fd6ff;
+    --amber:#ffb648;
+    --jade:#56e08a;
+    --rose:#ff7a7a;
+    --ink:#e9f1fa;
+    --ink-dim:#90a3bb;
+    --ink-faint:#5c6f87;
+    --mono:"DM Mono",ui-monospace,"Cascadia Code","SFMono-Regular",Menlo,Consolas,monospace;
+    --cjk:"PingFang TC","Microsoft JhengHei","Noto Sans TC","Heiti TC",sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{
+    font-family:var(--cjk);
+    background:
+      radial-gradient(120% 90% at 50% -10%, #15233a 0%, var(--void2) 45%, var(--void) 100%);
+    color:var(--ink);
+    -webkit-font-smoothing:antialiased;
+    overflow-x:hidden;
+  }
+  .wrap{max-width:1180px;margin:0 auto;padding:14px 16px 40px}
+
+  .rail{
+    display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+    background:linear-gradient(180deg,var(--panel) 0%, var(--panel2) 100%);
+    border:1px solid var(--bezel);
+    border-radius:14px;padding:10px 16px;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.05), 0 8px 24px rgba(0,0,0,.45);
+  }
+  .badge{
+    font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase;
+    color:var(--cyan);border:1px solid color-mix(in srgb,var(--cyan) 40%, transparent);
+    padding:4px 8px;border-radius:6px;background:color-mix(in srgb,var(--cyan) 9%, transparent);
+  }
+  .rail h1{font-size:16px;margin:0;font-weight:800;letter-spacing:.02em}
+  .rail .sub{font-size:12px;color:var(--ink-dim);margin-top:1px}
+  .rail .spacer{flex:1}
+  .stat{display:flex;flex-direction:column;align-items:flex-end;gap:2px;min-width:64px}
+  .stat .k{font-family:var(--mono);font-size:10px;letter-spacing:.14em;color:var(--ink-faint);text-transform:uppercase}
+  .stat .v{font-family:var(--mono);font-size:15px;font-weight:600;color:var(--ink)}
+  .leds{display:flex;gap:6px;align-items:center}
+  .led{width:8px;height:8px;border-radius:50%;background:#2a3647;box-shadow:inset 0 0 0 1px #000}
+  .led.on{background:var(--jade);box-shadow:0 0 8px var(--jade)}
+  .led.warn{background:var(--amber);box-shadow:0 0 8px var(--amber)}
+
+  .console{display:grid;grid-template-columns:1.18fr .92fr;gap:16px;margin-top:16px}
+  @media (max-width:880px){.console{grid-template-columns:1fr}}
+
+  .viewport{
+    position:relative;border-radius:20px;
+    background:radial-gradient(120% 120% at 50% 40%, #0a1422 0%, #05080f 70%);
+    border:2px solid var(--bezel);
+    padding:14px;
+    box-shadow:
+      inset 0 2px 1px rgba(255,255,255,.06),
+      inset 0 0 60px rgba(0,0,0,.7),
+      0 10px 30px rgba(0,0,0,.5);
+  }
+  .window{
+    position:relative;width:100%;aspect-ratio:1/1;border-radius:50%;
+    overflow:hidden;
+    background:#02040a;
+    box-shadow:
+      inset 0 0 0 2px #0b1320,
+      inset 0 0 0 8px #152033,
+      inset 0 0 70px rgba(0,0,0,.9);
+    border:6px solid #161f2c;
+    outline:2px solid #0a0f18;
+  }
+  canvas{display:block;width:100%;height:100%}
+  .glass{
+    position:absolute;inset:0;border-radius:50%;pointer-events:none;
+    background:
+      repeating-linear-gradient(0deg, transparent 0 28px, rgba(63,224,214,.045) 28px 29px),
+      repeating-linear-gradient(90deg, transparent 0 28px, rgba(63,224,214,.045) 28px 29px);
+    mix-blend-mode:screen;
+  }
+  .glass::after{
+    content:"";position:absolute;inset:0;border-radius:50%;
+    background:radial-gradient(60% 40% at 32% 22%, rgba(255,255,255,.10), transparent 60%);
+  }
+  .bolt{position:absolute;width:11px;height:11px;border-radius:50%;
+    background:radial-gradient(circle at 35% 30%, #586a82, #1b2433 70%);
+    box-shadow:0 1px 2px rgba(0,0,0,.6), inset 0 0 0 1px #0a0e16}
+  .bolt.tl{top:8px;left:8px}.bolt.tr{top:8px;right:8px}
+  .bolt.bl{bottom:8px;left:8px}.bolt.br{bottom:8px;right:8px}
+
+  .hud{position:absolute;pointer-events:none;font-family:var(--mono);font-size:11px;letter-spacing:.04em}
+  .hud-tl{top:22px;left:22px;text-align:left}
+  .hud-tr{top:22px;right:22px;text-align:right}
+  .hud .lbl{color:var(--ink-faint);font-size:9px;letter-spacing:.16em;text-transform:uppercase}
+  .hud .big{color:var(--cyan-soft);font-size:13px;font-weight:600;text-shadow:0 0 8px rgba(111,214,255,.4)}
+  .tag-ok{color:var(--jade)} .tag-mid{color:var(--amber)} .tag-bad{color:var(--rose)} .tag-dim{color:var(--ink-faint)}
+
+  .clarity{position:absolute;left:50%;transform:translateX(-50%);bottom:16px;width:74%;pointer-events:none}
+  .clarity .row{display:flex;justify-content:space-between;align-items:baseline;
+    font-family:var(--mono);font-size:10px;letter-spacing:.14em;color:var(--ink-faint);text-transform:uppercase;margin-bottom:4px}
+  .clarity .row b{font-size:16px;color:var(--cyan)}
+  .bar{height:8px;border-radius:5px;background:#0a121d;overflow:hidden;box-shadow:inset 0 0 0 1px #1b2a3aX}
+  .bar > i{display:block;height:100%;width:0%;border-radius:5px;
+    background:linear-gradient(90deg,#ff7a7a,#ffb648 45%,#56e08a 78%);transition:width .12s linear}
+  .threshold-note{font-family:var(--mono);font-size:9px;color:var(--ink-faint);text-align:center;margin-top:4px;letter-spacing:.08em}
+
+  .stack{display:flex;flex-direction:column;gap:14px}
+  .card{
+    background:linear-gradient(180deg,var(--panel) 0%, var(--panel2) 100%);
+    border:1px solid var(--bezel);border-radius:14px;padding:14px 16px;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.04), 0 8px 22px rgba(0,0,0,.4);
+  }
+  .card h2{margin:0 0 10px;font-size:12px;letter-spacing:.16em;text-transform:uppercase;
+    color:var(--ink-dim);font-weight:700;display:flex;align-items:center;gap:8px}
+  .card h2::before{content:"";width:14px;height:2px;background:var(--cyan);box-shadow:0 0 8px var(--cyan);border-radius:2px}
+
+  .obj-name{font-size:19px;font-weight:800;letter-spacing:.01em}
+  .obj-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px 14px;margin-top:10px}
+  .obj-grid .item .k{font-family:var(--mono);font-size:10px;letter-spacing:.1em;color:var(--ink-faint);text-transform:uppercase}
+  .obj-grid .item .v{font-size:14px;font-weight:600;margin-top:2px}
+  .obj-grid .item .v.coord{font-family:var(--mono);color:var(--cyan-soft)}
+  .brief-line{font-size:13px;line-height:1.55;color:var(--ink-dim);margin-top:10px;
+    border-left:2px solid var(--bezel-hi);padding-left:10px}
+
+  .ctrl{margin-bottom:14px}
+  .ctrl:last-child{margin-bottom:0}
+  .ctrl .top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
+  .ctrl .name{font-size:13px;font-weight:700}
+  .ctrl .name small{font-weight:400;color:var(--ink-faint);font-size:11px;margin-left:6px}
+  .ctrl .val{font-family:var(--mono);font-size:15px;font-weight:600;color:var(--cyan-soft)}
+  input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:24px;background:transparent;cursor:pointer}
+  input[type=range]::-webkit-slider-runnable-track{height:6px;border-radius:4px;
+    background:linear-gradient(90deg,#1b2a3aX,#26344a);box-shadow:inset 0 0 0 1px #0a0f18}
+  input[type=range]::-moz-range-track{height:6px;border-radius:4px;background:#26344a}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:20px;height:20px;border-radius:50%;
+    margin-top:-7px;background:radial-gradient(circle at 35% 30%,#aef3ee,var(--cyan) 60%,#138c84 100%);
+    box-shadow:0 0 10px rgba(63,224,214,.7),0 2px 3px rgba(0,0,0,.6);border:1px solid #0a3b38}
+  input[type=range]::-moz-range-thumb{width:20px;height:20px;border:none;border-radius:50%;
+    background:var(--cyan);box-shadow:0 0 10px rgba(63,224,214,.7)}
+  input[type=range]:focus-visible{outline:2px solid var(--cyan-soft);outline-offset:4px;border-radius:6px}
+
+  .bands{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .band{
+    text-align:left;border:1px solid var(--bezel);background:var(--panel2);color:var(--ink);
+    border-radius:10px;padding:9px 11px;cursor:pointer;font-family:inherit;transition:.12s;
+  }
+  .band .code{font-family:var(--mono);font-size:11px;letter-spacing:.14em;color:var(--ink-dim)}
+  .band .gas{font-size:14px;font-weight:700;margin-top:2px}
+  .band .nm{font-size:10px;color:var(--ink-faint);margin-top:1px;font-family:var(--mono)}
+  .band:hover{border-color:var(--bezel-hi)}
+  .band[aria-pressed=true]{border-color:var(--cyan);background:color-mix(in srgb,var(--cyan) 12%,var(--panel2));
+    box-shadow:0 0 0 1px var(--cyan), 0 0 16px rgba(63,224,214,.25)}
+  .band[aria-pressed=true] .code{color:var(--cyan)}
+
+  .capture{
+    width:100%;margin-top:4px;border:none;border-radius:14px;cursor:pointer;font-family:inherit;
+    padding:15px;font-size:17px;font-weight:800;letter-spacing:.06em;color:#04130f;
+    background:linear-gradient(180deg,#7af0b0,#34c777);
+    box-shadow:0 0 22px rgba(86,224,138,.45),inset 0 1px 0 rgba(255,255,255,.5);transition:.12s}
+  .capture:hover{filter:brightness(1.06)}
+  .capture:active{transform:translateY(1px)}
+  .capture:disabled{background:#2a3647;color:var(--ink-faint);box-shadow:none;cursor:not-allowed}
+  .capture .hint{display:block;font-size:11px;font-weight:500;letter-spacing:.04em;margin-top:2px;opacity:.8}
+
+  .aimpad{display:flex;gap:18px;align-items:center;flex-wrap:wrap}
+  .dpad{display:grid;grid-template-columns:repeat(3,48px);grid-template-rows:repeat(3,48px);gap:6px;flex:0 0 auto}
+  .dbtn{border:1px solid var(--bezel);background:linear-gradient(180deg,#202b3c,#161f2c);color:var(--cyan-soft);
+    font-size:18px;border-radius:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.06),0 2px 5px rgba(0,0,0,.45);user-select:none;-webkit-user-select:none;
+    touch-action:none;transition:transform .06s,background .1s,color .1s}
+  .dbtn:hover{border-color:var(--cyan);color:#fff}
+  .dbtn:active,.dbtn.press{background:linear-gradient(180deg,#3fe0d6,#1a8079);color:#04130f;transform:translateY(1px)}
+  .dbtn:focus-visible{outline:2px solid var(--cyan-soft);outline-offset:2px}
+  .up{grid-area:1/2}.left{grid-area:2/1}.dcenter{grid-area:2/2}.right{grid-area:2/3}.down{grid-area:3/2}
+  .dcenter{display:flex;align-items:center;justify-content:center;border-radius:11px;
+    background:radial-gradient(circle at 50% 38%,#10303f,#0a1622);border:1px solid var(--line)}
+  .dcenter .dlbl{font-family:var(--mono);font-size:10px;color:var(--ink-faint);letter-spacing:.06em;text-align:center;line-height:1.3}
+  .coordbox{flex:1 1 150px;min-width:140px}
+  .cline{display:flex;justify-content:space-between;align-items:baseline;padding:7px 0;border-bottom:1px dashed var(--line)}
+  .cline .ck{font-size:12px;color:var(--ink-faint)}
+  .cline .cv{font-family:var(--mono);font-size:19px;font-weight:600;color:var(--cyan-soft)}
+  .chint{font-size:11px;color:var(--ink-faint);margin-top:9px;line-height:1.55}
+
+  .scrim{position:fixed;inset:0;background:rgba(3,6,12,.82);backdrop-filter:blur(3px);
+    display:flex;align-items:center;justify-content:center;padding:18px;z-index:50;opacity:0;pointer-events:none;transition:opacity .25s}
+  .scrim.show{opacity:1;pointer-events:auto}
+  .modal{max-width:560px;width:100%;background:linear-gradient(180deg,#16203016,transparent),var(--panel);
+    border:1px solid var(--bezel);border-radius:18px;padding:26px;
+    box-shadow:0 30px 80px rgba(0,0,0,.6);transform:translateY(10px);transition:transform .25s}
+  .scrim.show .modal{transform:none}
+  .modal .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--cyan)}
+  .modal h3{font-size:24px;margin:6px 0 4px;letter-spacing:.01em}
+  .modal p{font-size:14px;line-height:1.7;color:var(--ink-dim);margin:8px 0}
+  .modal .score-big{font-family:var(--mono);font-size:46px;font-weight:700;line-height:1}
+  .subscores{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:14px 0}
+  .subscores .s{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+  .subscores .s .k{font-size:11px;color:var(--ink-faint)}
+  .subscores .s .b{height:6px;border-radius:4px;background:#0a121d;margin-top:6px;overflow:hidden}
+  .subscores .s .b > i{display:block;height:100%;border-radius:4px;background:var(--cyan)}
+  .fact{background:color-mix(in srgb,var(--cyan) 8%,transparent);border:1px solid color-mix(in srgb,var(--cyan) 30%,transparent);
+    border-radius:12px;padding:12px 14px;margin-top:14px}
+  .fact .t{font-size:11px;letter-spacing:.14em;color:var(--cyan);text-transform:uppercase;font-family:var(--mono);margin-bottom:4px}
+  .fact p{margin:0;color:var(--ink);font-size:13.5px}
+  .btn{border:none;border-radius:11px;cursor:pointer;font-family:inherit;font-weight:700;font-size:15px;
+    padding:12px 22px;background:linear-gradient(180deg,#5fe6db,#2bb3a9);color:#04130f;box-shadow:0 0 18px rgba(63,224,214,.4)}
+  .btn:hover{filter:brightness(1.06)}
+  .btn.ghost{background:transparent;color:var(--ink-dim);box-shadow:none;border:1px solid var(--bezel)}
+  .modal .row{display:flex;gap:10px;align-items:center;margin-top:18px;flex-wrap:wrap}
+  .stars{font-size:22px;letter-spacing:4px}
+  .input-name{width:100%;margin-top:10px;background:var(--panel2);border:1px solid var(--bezel);color:var(--ink);
+    font-family:inherit;font-size:15px;border-radius:10px;padding:11px 13px}
+  .input-name:focus{outline:2px solid var(--cyan);border-color:var(--cyan)}
+
+  .cand{display:grid;grid-template-columns:auto 1fr auto;gap:6px 12px;align-items:center;
+    font-size:13px;margin-top:8px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:8px 12px}
+  .cand .c-coord{font-family:var(--mono);color:var(--cyan-soft);font-size:12px}
+  .cand .c-emit{font-family:var(--mono);font-weight:700}
+
+  .footnote{text-align:center;color:var(--ink-faint);font-size:11px;margin-top:22px;line-height:1.6}
+
+  @media (prefers-reduced-motion: reduce){
+    *{animation:none!important;transition:none!important}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="rail">
+    <span class="badge">天宮 · 天韻載荷艙</span>
+    <div>
+      <h1>載荷專家任務控制台</h1>
+      <div class="sub" id="specialistLine">載荷專家：黎家盈博士 | 任務：監測地球溫室氣體</div>
+    </div>
+    <div class="spacer"></div>
+    <div class="leds" title="艙內狀態指示燈">
+      <span class="led on" id="ledPower"></span>
+      <span class="led on" id="ledLink"></span>
+      <span class="led" id="ledCloud"></span>
+    </div>
+    <div class="stat"><span class="k">任務</span><span class="v" id="missionNo">1 / 4</span></div>
+    <div class="stat"><span class="k">總星數</span><span class="v" id="starTotal">0</span></div>
+    <div class="stat"><span class="k">太陽能</span><span class="v" id="energy">100%</span></div>
+  </div>
+
+  <div class="console">
+    <div class="viewport">
+      <span class="bolt tl"></span><span class="bolt tr"></span>
+      <span class="bolt bl"></span><span class="bolt br"></span>
+      <div class="window">
+        <canvas id="globe"></canvas>
+        <div class="glass"></div>
+
+        <div class="hud hud-tl">
+          <div class="lbl">目標上空雲量</div>
+          <div class="big" id="hudCloud">—</div>
+          <div class="lbl" style="margin-top:8px">目標日照</div>
+          <div class="big" id="hudLight">—</div>
+        </div>
+        <div class="hud hud-tr">
+          <div class="lbl">目標位置</div>
+          <div class="big" id="hudVisible">—</div>
+          <div class="lbl" style="margin-top:8px">鏡頭對準</div>
+          <div class="big" id="hudAim">—</div>
+        </div>
+
+        <div class="clarity">
+          <div class="row"><span>即時數據清晰度</span><b id="clarityNum">0</b></div>
+          <div class="bar"><i id="clarityBar"></i></div>
+          <div class="threshold-note" id="threshNote">合格線：60 分</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="stack">
+
+      <div class="card">
+        <h2>任務指令</h2>
+        <div class="obj-name" id="objName">—</div>
+        <div class="obj-grid">
+          <div class="item"><div class="k">目標氣體</div><div class="v" id="objGas">—</div></div>
+          <div class="item"><div class="k">目標坐標</div><div class="v coord" id="objCoord">—</div></div>
+        </div>
+        <div class="brief-line" id="objBrief">—</div>
+      </div>
+
+      <div class="card">
+        <h2>對準目標 · 十字操作</h2>
+        <div class="aimpad">
+          <div class="dpad">
+            <button class="dbtn up" data-dir="up" type="button" aria-label="向北（緯度增加）">▲</button>
+            <button class="dbtn left" data-dir="left" type="button" aria-label="向西（經度減少）">◀</button>
+            <div class="dcenter"><span class="dlbl">移動<br>紅色準星</span></div>
+            <button class="dbtn right" data-dir="right" type="button" aria-label="向東（經度增加）">▶</button>
+            <button class="dbtn down" data-dir="down" type="button" aria-label="向南（緯度減少）">▼</button>
+          </div>
+          <div class="coordbox">
+            <div class="cline"><span class="ck">緯度 · 南北</span><span class="cv" id="latVal">0°N</span></div>
+            <div class="cline"><span class="ck">經度 · 東西</span><span class="cv" id="lonVal">0°E</span></div>
+            <div class="chint">按住箭咀可連續移動；用電腦時方向鍵 ←↑↓→ 一樣得。</div>
+          </div>
+        </div>
+        <div class="ctrl" style="margin-top:16px">
+          <div class="top"><span class="name">曝光時間 <small>光猛調短 · 光弱調長</small></span><span class="val" id="expVal">5</span></div>
+          <input type="range" id="exp" min="1" max="10" step="1" value="5" aria-label="曝光時間">
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>紅外線波段</h2>
+        <div class="bands" id="bands"></div>
+      </div>
+
+      <button class="capture" id="captureBtn">
+        拍 攝
+        <span class="hint" id="captureHint">等清晰度夠高才按下快門</span>
+      </button>
+    </div>
+  </div>
+
+  <div class="footnote">
+    靈感來自香港載荷專家候選人黎家盈博士的真實任務 · 此為科學教育模擬遊戲，數據與地理為簡化示意。
+  </div>
+</div>
+
+<div class="scrim show" id="scrim">
+  <div class="modal" id="modal" role="dialog" aria-modal="true"></div>
+</div>
+
+<script>
+(function(){
+"use strict";
+
+// 【新增】接收主網頁傳來的學生資料
+const urlParams = new URLSearchParams(window.location.search);
+const studentClass = urlParams.get('class') || '未設定班別';
+const studentId = urlParams.get('id') || '未設定學號';
+
+// 【新增】上傳紀錄函數
+function sendDataToSheet(finalScore) {
+    const scriptURL = 'https://script.google.com/macros/s/AKfycbwHKY-YDXziCb0eCZtW-GQ9MGUQshKIIJk1qJgX7TPqTL1YwThCrvCld5YNSH9CSwpPew/exec';
+    const data = {
+        gameName: '天韻載荷艙',
+        studentClass: studentClass,
+        studentId: studentId,
+        playDate: new Date().toLocaleDateString('zh-HK'),
+        playTime: '完成',
+        score: finalScore
+    };
+    fetch(scriptURL, { method: 'POST', body: JSON.stringify(data), headers: { 'Content-Type': 'text/plain;charset=utf-8' }})
+    .catch(e => console.log(e));
+}
+
+const $=id=>document.getElementById(id);
+const DEG=Math.PI/180;
+const clamp=(v,a,b)=>v<a?a:v>b?b:v;
+const lerp=(a,b,t)=>a+(b-a)*t;
+
+const sun=(function(){const x=0.82,y=0.24,z=0.5;const m=Math.hypot(x,y,z);return {x:x/m,y:y/m,z:z/m};})();
+
+const BANDS=[
+  {code:'波段 A',gas:'二氧化碳 CO₂',nm:'短波紅外 1.6µm',id:'A'},
+  {code:'波段 B',gas:'甲烷 CH₄',nm:'短波紅外 2.3µm',id:'B'},
+  {code:'波段 C',gas:'水蒸氣 H₂O',nm:'熱紅外',id:'C'},
+  {code:'波段 D',gas:'植被反照',nm:'近紅外',id:'D'},
+];
+
+const MISSIONS=[
+  {
+    name:'東亞工業帶',
+    gasName:'二氧化碳 CO₂', band:'A',
+    lat:36, lon:116, pass:60, cloudCount:8,
+    brief:'第一次任務。用十字鍵把紅色準星對準目標坐標、選對偵測二氧化碳的波段，再按日照調好曝光。今天上空雲不多，放膽試試。',
+    fact:'二氧化碳是最主要的人為溫室氣體，主要來自燃燒煤、石油和天然氣。它會吸收特定波長的紅外線，所以選對波段就能從太空「看見」它。',
+    markers:[]
+  },
+  {
+    name:'北美五大湖工業區',
+    gasName:'二氧化碳 CO₂', band:'A',
+    lat:43, lon:-83, pass:64, cloudCount:14,
+    brief:'轉到地球另一面的北美洲。先把準星一路向西（◀）移過大西洋，對準五大湖工業區，再等雲飄開的一刻拍攝。',
+    fact:'工廠、發電廠和汽車都會排放二氧化碳。從太空長期監測不同地區的排放量，科學家就能比較哪裏減碳做得好。',
+    markers:[]
+  },
+  {
+    name:'恆河三角洲濕地',
+    gasName:'甲烷 CH₄', band:'B',
+    lat:23, lon:90, pass:66, cloudCount:16,
+    brief:'濕地、稻田和垃圾堆填區會釋出甲烷。這裏雲層特別多、又不斷飄移——盯住「目標上空雲量」，等它變晴朗的一刻才按快門。',
+    fact:'甲烷的「鎖熱」能力比二氧化碳強很多，主要來自濕地、稻田、牛隻和垃圾。它的紅外線「指紋」與二氧化碳不同，要換另一個波段才偵測得到。',
+    markers:[]
+  },
+  {
+    name:'亞馬遜雨林',
+    gasName:'水蒸氣 H₂O', band:'C',
+    lat:-3, lon:-60, pass:68, cloudCount:16,
+    brief:'來到南半球的南美洲雨林。這裏濕度極高、水蒸氣濃，要改用偵測水蒸氣的波段。雨林上空雲團來去匆匆，把握空檔。',
+    fact:'水蒸氣其實是地球上含量最多的溫室氣體。雨林蒸發大量水分，也常被厚厚的雲遮住，所以要耐心等待清晰的一刻。',
+    markers:[]
+  },
+  {
+    name:'西歐工業區（晨昏線附近）',
+    gasName:'二氧化碳 CO₂', band:'A',
+    lat:50, lon:8, pass:70, cloudCount:14,
+    brief:'這片工業區正處於日夜交界，會輪流轉入黑夜（太暗、拍不清）。等它自轉到有日照那一面、雲又散開時，同時把曝光調到配合光照。',
+    fact:'紅外線相機需要足夠陽光反射才能拍到清晰訊號。當地區轉入地球的夜半球，光線不足、數據充滿雜訊——所以「拍攝時機」非常重要。',
+    markers:[]
+  },
+  {
+    name:'抉擇：找出排放最高的工業區',
+    gasName:'二氧化碳 CO₂', band:'A',
+    lat:40, lon:118, pass:72, cloudCount:16,
+    brief:'最終任務：地圖上三個彩色標記，揀出「排放量最高、而且天氣會轉晴」的一個，把紅色準星撥準它再拍。想清楚才行動。',
+    fact:'真正的載荷專家每次拍攝都要同時權衡：對準哪裏、用甚麼波段、雲層、光照、曝光、能源……這種「多重變數一起考量」的能力，正是科學探究的核心。',
+    markers:[
+      {lat:40,lon:118,label:'華北工業群 · 排放高 ↑',correct:true},
+      {lat:1,lon:20,label:'剛果雨林 · 排放低',correct:false},
+      {lat:-23,lon:134,label:'澳洲內陸 · 無工業',correct:false},
+    ]
+  },
+];
+
+const state={
+  mi:-1, mission:null,
+  aimLat:0, aimLon:0, band:null, exp:5,
+  rot:0, clouds:[], energy:1, stars:0, started:false,
+};
+
+const LAND=(function(){
+  const blobs=[
+    {lat:55,lon:-100,rl:16,ro:28},{lat:42,lon:-100,rl:11,ro:20},{lat:37,lon:-86,rl:9,ro:12},
+    {lat:30,lon:-95,rl:7,ro:9},{lat:62,lon:-150,rl:8,ro:14},{lat:22,lon:-101,rl:7,ro:7},
+    {lat:48,lon:-65,rl:7,ro:8},
+    {lat:72,lon:-42,rl:9,ro:17},
+    {lat:-3,lon:-62,rl:12,ro:14},{lat:-22,lon:-60,rl:12,ro:9},{lat:-40,lon:-68,rl:9,ro:5},
+    {lat:8,lon:-67,rl:6,ro:8},
+    {lat:22,lon:12,rl:13,ro:18},{lat:3,lon:20,rl:13,ro:17},{lat:-20,lon:26,rl:14,ro:11},{lat:10,lon:42,rl:7,ro:8},
+    {lat:52,lon:18,rl:11,ro:24},{lat:62,lon:24,rl:8,ro:16},
+    {lat:58,lon:92,rl:15,ro:52},{lat:45,lon:74,rl:12,ro:26},{lat:30,lon:52,rl:11,ro:18},
+    {lat:35,lon:106,rl:12,ro:16},{lat:23,lon:80,rl:10,ro:9},{lat:12,lon:102,rl:8,ro:11},
+    {lat:-3,lon:118,rl:6,ro:17},{lat:37,lon:138,rl:7,ro:4},{lat:54,lon:-3,rl:6,ro:5},
+    {lat:-20,lon:47,rl:8,ro:3},{lat:-42,lon:172,rl:7,ro:3},
+    {lat:-25,lon:134,rl:12,ro:18},
+    {lat:-82,lon:-120,rl:6,ro:40},{lat:-82,lon:-40,rl:6,ro:40},{lat:-82,lon:40,rl:6,ro:40},
+    {lat:-82,lon:120,rl:6,ro:40},{lat:-82,lon:180,rl:6,ro:40},{lat:-82,lon:0,rl:6,ro:40},
+  ];
+  const pts=[];
+  for(const b of blobs){
+    const stepLat=2.6, stepLon=2.6/Math.max(.22,Math.cos(b.lat*DEG));
+    for(let la=b.lat-b.rl; la<=b.lat+b.rl; la+=stepLat){
+      for(let lo=b.lon-b.ro; lo<=b.lon+b.ro; lo+=stepLon){
+        const dl=(la-b.lat)/b.rl, dlo=(lo-b.lon)/b.ro;
+        const r=dl*dl+dlo*dlo;
+        const edge=0.86+0.16*Math.sin(lo*0.6+la*0.3); 
+        if(r<=edge){ pts.push({lat:la, lon:((lo+540)%360)-180}); }
+      }
+    }
+  }
+  return pts;
+})();
+
+const STARS=Array.from({length:90},()=>({x:Math.random(),y:Math.random(),s:Math.random()*1.4+0.3,t:Math.random()*6}));
+
+const cv=$('globe'), ctx=cv.getContext('2d');
+let W=0,H=0,DPR=1;
+function resize(){
+  const r=cv.getBoundingClientRect();
+  DPR=Math.min(2,window.devicePixelRatio||1);
+  W=Math.max(40,r.width); H=Math.max(40,r.height);
+  cv.width=Math.round(W*DPR); cv.height=Math.round(H*DPR);
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+}
+new ResizeObserver(resize).observe(cv);
+window.addEventListener('resize',resize);
+
+function project(lat,lon){
+  const la=lat*DEG, lo=lon*DEG+state.rot;
+  const x=Math.cos(la)*Math.sin(lo);
+  const y=Math.sin(la);
+  const z=Math.cos(la)*Math.cos(lo);
+  return {x,y,z};
+}
+function lightAt(lat,lon){ const p=project(lat,lon); return Math.max(0,p.x*sun.x+p.y*sun.y+p.z*sun.z); }
+function gcDist(la1,lo1,la2,lo2){
+  const a=la1*DEG,b=la2*DEG;
+  const c=Math.sin(a)*Math.sin(b)+Math.cos(a)*Math.cos(b)*Math.cos((lo1-lo2)*DEG);
+  return Math.acos(clamp(c,-1,1))/DEG;
+}
+function cloudCoverAt(lat,lon){
+  let cov=0;
+  for(const cl of state.clouds){
+    const d=gcDist(lat,lon,cl.lat,cl.lon);            
+    const rDeg=cl.r/DEG*0.5;                            
+    if(d<rDeg) cov+=cl.o*(1-d/rDeg);
+  }
+  return clamp(cov,0,1);
+}
+
+function spawnCloud(nearTarget){
+  const m=state.mission;
+  let lat,lon;
+  if(nearTarget&&m){ lat=clamp(m.lat+(Math.random()*70-35),-72,72); lon=m.lon+(Math.random()*90-45); }
+  else { lat=Math.random()*150-75; lon=Math.random()*360-180; }
+  return {
+    lat, lon:((lon+540)%360)-180,
+    r:0.13+Math.random()*0.22,
+    tO:0.55+Math.random()*0.4, o:0,
+    vlon:(Math.random()<0.5?-1:1)*(2.2+Math.random()*6.5),   
+    age:0, life:8+Math.random()*12, fin:1.6, fout:2.4,
+  };
+}
+function updateClouds(dt){
+  const want=state.mission?state.mission.cloudCount:14;
+  for(let i=state.clouds.length-1;i>=0;i--){
+    const c=state.clouds[i];
+    c.age+=dt;
+    c.lon+=c.vlon*dt; if(c.lon>180)c.lon-=360; if(c.lon<-180)c.lon+=360;
+    let env=1;
+    if(c.age<c.fin) env=c.age/c.fin;
+    else if(c.age>c.life-c.fout) env=Math.max(0,(c.life-c.age)/c.fout);
+    c.o=c.tO*env;
+    if(c.age>=c.life) state.clouds.splice(i,1);
+  }
+  if(state.clouds.length<want && Math.random()<0.07){ state.clouds.push(spawnCloud(Math.random()<0.45)); }
+}
+
+function evaluate(){
+  const m=state.mission;
+  const aimD=gcDist(state.aimLat,state.aimLon,m.lat,m.lon);
+  const aim=clamp((45-aimD)/35,0,1);
+  const band=state.band===m.band?1:0.08;
+  const cloud=1-cloudCoverAt(m.lat,m.lon);
+  const L=lightAt(m.lat,m.lon);
+  const lightAvail=clamp((L-0.12)/0.5,0,1);
+  const idealExp=8-5.5*clamp(L,0,1);
+  const expMatch=clamp(1-Math.abs(state.exp-idealExp)/4,0,1);
+  const lightExp=lightAvail*expMatch;
+  const total=Math.round((aim*0.30+band*0.25+cloud*0.22+lightExp*0.23)*100);
+  return {total,aim,band,cloud,lightExp,L,lightAvail,expMatch,aimD};
+}
+
+function landColor(L,lat){
+  let r,g,b; const al=Math.abs(lat);
+  if(al>68){ r=206;g=223;b=233; }            
+  else if(al>=14&&al<=30){ r=170;g=143;b=96; } 
+  else if(al>=30&&al<=58){ r=96;g=146;b=82; }  
+  else { r=66;g=138;b=80; }                    
+  const t=clamp((L-0.04)/0.62,0,1)*0.82+0.18;  
+  return `rgb(${Math.round(r*t)},${Math.round(g*t)},${Math.round(b*t)})`;
+}
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  const cx=W/2, cy=H/2, R=Math.min(W,H)*0.46;
+
+  for(const s of STARS){
+    const a=0.4+0.4*Math.sin(performance.now()/700+s.t);
+    ctx.fillStyle=`rgba(200,225,255,${a*0.7})`;
+    ctx.fillRect(s.x*W, s.y*H, s.s, s.s);
+  }
+
+  const glow=ctx.createRadialGradient(cx,cy,R*0.8,cx,cy,R*1.25);
+  glow.addColorStop(0,'rgba(63,224,214,.18)');
+  glow.addColorStop(1,'rgba(63,224,214,0)');
+  ctx.fillStyle=glow; ctx.beginPath(); ctx.arc(cx,cy,R*1.25,0,7); ctx.fill();
+
+  ctx.save();
+  ctx.beginPath(); ctx.arc(cx,cy,R,0,7); ctx.clip();
+
+  const sx=cx+R*sun.x*0.75, sy=cy-R*sun.y*0.75;
+  const og=ctx.createRadialGradient(sx,sy,R*0.05,sx,sy,R*2.0);
+  og.addColorStop(0,'#2a6f93'); og.addColorStop(0.5,'#123247'); og.addColorStop(1,'#060f18');
+  ctx.fillStyle=og; ctx.fillRect(cx-R,cy-R,2*R,2*R);
+
+  for(const p of LAND){
+    const pr=project(p.lat,p.lon);
+    if(pr.z<=0) continue;
+    const L=Math.max(0,pr.x*sun.x+pr.y*sun.y+pr.z*sun.z);
+    const px=cx+R*pr.x, py=cy-R*pr.y;
+    const sz=Math.max(2,R*0.05*(0.55+0.45*pr.z));
+    ctx.fillStyle=landColor(L,p.lat);
+    ctx.fillRect(px-sz/2,py-sz/2,sz,sz);
+  }
+
+  for(const cl of state.clouds){
+    const pr=project(cl.lat,cl.lon);
+    if(pr.z<=0) continue;
+    const px=cx+R*pr.x, py=cy-R*pr.y;
+    const rad=cl.r*R*(0.45+0.55*pr.z);
+    const cg=ctx.createRadialGradient(px,py,1,px,py,rad);
+    cg.addColorStop(0,`rgba(245,250,255,${0.62*cl.o*pr.z})`);
+    cg.addColorStop(0.6,`rgba(220,235,250,${0.32*cl.o*pr.z})`);
+    cg.addColorStop(1,'rgba(220,235,250,0)');
+    ctx.fillStyle=cg; ctx.beginPath(); ctx.arc(px,py,rad,0,7); ctx.fill();
+  }
+  ctx.restore();
+
+  ctx.lineWidth=2; ctx.strokeStyle='rgba(120,200,235,.35)';
+  ctx.beginPath(); ctx.arc(cx,cy,R,0,7); ctx.stroke();
+
+  if(!state.mission) return;
+  const m=state.mission;
+
+  for(const mk of (m.markers||[])){
+    if(mk.correct) continue;
+    drawMarker(mk.lat,mk.lon,cx,cy,R,'rgba(140,190,255,.92)',mk.label,false);
+  }
+  drawMarker(m.lat,m.lon,cx,cy,R,'#ffd24a',(m.markers&&m.markers.length?(m.markers.find(x=>x.correct).label):m.name),true);
+
+  const ap=project(state.aimLat,state.aimLon);
+  if(ap.z>0){
+    const px=cx+R*ap.x, py=cy-R*ap.y;
+    ctx.save();
+    ctx.shadowColor='rgba(255,40,40,.9)'; ctx.shadowBlur=8;
+    ctx.strokeStyle='#ff2f2f'; ctx.lineWidth=2.8;
+    const r=17;
+    ctx.beginPath(); ctx.arc(px,py,r,0,7); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(px-r-8,py); ctx.lineTo(px-r+5,py);
+    ctx.moveTo(px+r-5,py); ctx.lineTo(px+r+8,py);
+    ctx.moveTo(px,py-r-8); ctx.lineTo(px,py-r+5);
+    ctx.moveTo(px,py+r-5); ctx.lineTo(px,py+r+8);
+    ctx.stroke();
+    ctx.shadowBlur=0;
+    ctx.fillStyle='#ff2f2f';
+    ctx.beginPath(); ctx.arc(px,py,2.6,0,7); ctx.fill();
+    ctx.restore();
+  }
+}
+function drawMarker(lat,lon,cx,cy,R,color,label,pulse){
+  const p=project(lat,lon);
+  if(p.z<=0){
+    const ang=Math.atan2(-p.y,p.x);
+    const ex=cx+Math.cos(ang)*(R-14), ey=cy+Math.sin(ang)*(R-14);
+    ctx.fillStyle=color; ctx.globalAlpha=0.7;
+    ctx.beginPath(); ctx.arc(ex,ey,4,0,7); ctx.fill(); ctx.globalAlpha=1;
+    return;
+  }
+  const px=cx+R*p.x, py=cy-R*p.y;
+  if(pulse){
+    const t=0.5+0.5*Math.sin(performance.now()/350);
+    ctx.strokeStyle=color; ctx.globalAlpha=0.5*t; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.arc(px,py,8+8*t,0,7); ctx.stroke(); ctx.globalAlpha=1;
+  }
+  ctx.fillStyle=color;
+  ctx.beginPath(); ctx.arc(px,py,4.5,0,7); ctx.fill();
+  ctx.strokeStyle='rgba(0,0,0,.5)'; ctx.lineWidth=1; ctx.stroke();
+  ctx.font='600 11px '+getComputedStyle(document.body).fontFamily;
+  const tw=ctx.measureText(label).width;
+  const lx=clamp(px+9, 6, W-tw-12), ly=clamp(py-9, 14, H-6);
+  ctx.fillStyle='rgba(6,10,18,.7)'; ctx.fillRect(lx-3,ly-11,tw+6,15);
+  ctx.fillStyle='#e9f1fa'; ctx.fillText(label,lx,ly);
+}
+
+function fmtLat(v){return Math.abs(v)+'°'+(v>=0?'N':'S');}
+function fmtLon(v){return Math.abs(v)+'°'+(v>=0?'E':'W');}
+function cloudTag(c){ if(c<0.15)return['晴朗','tag-ok']; if(c<0.45)return['少雲','tag-mid']; if(c<0.75)return['多雲','tag-mid']; return['密雲','tag-bad']; }
+function lightTag(L){ if(L>0.6)return['強','tag-ok']; if(L>0.32)return['中','tag-mid']; if(L>0.12)return['弱','tag-bad']; return['黑夜','tag-dim']; }
+
+function updateHUD(){
+  if(!state.mission) return;
+  const m=state.mission;
+  const c=cloudCoverAt(m.lat,m.lon);
+  const L=lightAt(m.lat,m.lon);
+  const vis=project(m.lat,m.lon).z>0;
+  const e=evaluate();
+
+  const [ct,ccls]=cloudTag(c); const [lt,lcls]=lightTag(L);
+  $('hudCloud').className='big '+ccls; $('hudCloud').textContent=ct;
+  $('hudLight').className='big '+lcls; $('hudLight').textContent=lt;
+  $('hudVisible').className='big '+(vis?'tag-ok':'tag-dim'); $('hudVisible').textContent=vis?'在視野內':'已轉到背面';
+  const aimGood=e.aimD<14;
+  $('hudAim').className='big '+(aimGood?'tag-ok':'tag-mid'); $('hudAim').textContent=aimGood?'已對準':'未對準';
+
+  $('clarityNum').textContent=e.total;
+  $('clarityBar').style.width=e.total+'%';
+  $('ledCloud').className='led '+(c>0.5?'warn':(vis&&L>0.2?'on':''));
+
+  $('captureHint').textContent = e.total>=m.pass ? '清晰度足夠，可以拍攝！' : '調整參數，等清晰度升到合格線';
+}
+
+let last=performance.now();
+function loop(now){
+  const dt=Math.min(0.05,(now-last)/1000); last=now;
+  if(state.started){
+    state.rot+=dt*0.16;
+    if(state.rot>Math.PI*2) state.rot-=Math.PI*2;
+    updateClouds(dt);
+    const sub=lightAt(0, -state.rot/DEG); 
+    state.energy=clamp(state.energy+(sub>0.3?0.03:-0.012)*dt,0.25,1);
+    $('energy').textContent=Math.round(state.energy*100)+'%';
+  }
+  draw();
+  if(state.started) updateHUD();
+  requestAnimationFrame(loop);
+}
+
+function buildBands(){
+  const wrap=$('bands'); wrap.innerHTML='';
+  BANDS.forEach(b=>{
+    const el=document.createElement('button');
+    el.className='band'; el.type='button'; el.setAttribute('aria-pressed','false'); el.dataset.id=b.id;
+    el.innerHTML=`<div class="code">${b.code}</div><div class="gas">${b.gas}</div><div class="nm">${b.nm}</div>`;
+    el.addEventListener('click',()=>{ state.band=b.id; refreshBands(); });
+    wrap.appendChild(el);
+  });
+}
+function refreshBands(){ document.querySelectorAll('.band').forEach(el=>el.setAttribute('aria-pressed', el.dataset.id===state.band?'true':'false')); }
+
+function setAim(la,lo){
+  state.aimLat=clamp(la,-90,90);
+  state.aimLon=((lo+540)%360)-180;
+  $('latVal').textContent=fmtLat(state.aimLat);
+  $('lonVal').textContent=fmtLon(state.aimLon);
+}
+function nudge(dir){
+  if(dir==='up') setAim(state.aimLat+2,state.aimLon);
+  else if(dir==='down') setAim(state.aimLat-2,state.aimLon);
+  else if(dir==='left') setAim(state.aimLat,state.aimLon-2);
+  else if(dir==='right') setAim(state.aimLat,state.aimLon+2);
+}
+let holdTimer=null;
+function stopHold(){ if(holdTimer){clearInterval(holdTimer);holdTimer=null;} document.querySelectorAll('.dbtn').forEach(b=>b.classList.remove('press')); }
+function startHold(dir,btn){ nudge(dir); btn&&btn.classList.add('press'); stopHoldOnly(); holdTimer=setInterval(()=>nudge(dir),70); }
+function stopHoldOnly(){ if(holdTimer){clearInterval(holdTimer);holdTimer=null;} }
+document.querySelectorAll('.dbtn').forEach(btn=>{
+  const dir=btn.dataset.dir;
+  btn.addEventListener('pointerdown',e=>{ e.preventDefault(); if(state.started) startHold(dir,btn); });
+  btn.addEventListener('pointerup',stopHold);
+  btn.addEventListener('pointerleave',stopHold);
+  btn.addEventListener('pointercancel',stopHold);
+});
+window.addEventListener('pointerup',stopHold);
+window.addEventListener('keydown',e=>{
+  if(!state.started) return;
+  const map={ArrowUp:'up',ArrowDown:'down',ArrowLeft:'left',ArrowRight:'right'};
+  if(map[e.key]){ nudge(map[e.key]); e.preventDefault(); }
+});
+$('exp').addEventListener('input',e=>{state.exp=+e.target.value; $('expVal').textContent=state.exp;});
+
+function loadMission(i){
+  state.mi=i;
+  const m=JSON.parse(JSON.stringify(MISSIONS[i]));
+  state.mission=m;
+  state.clouds=[];
+  const want=m.cloudCount||14;
+  for(let i=0;i<want;i++){ const c=spawnCloud(Math.random()<0.3); c.age=Math.random()*(c.life*0.7); state.clouds.push(c); }
+  state.band=null; refreshBands();
+  $('objName').textContent=m.name;
+  $('objGas').textContent=m.gasName;
+  $('objCoord').textContent=fmtLat(m.lat)+' , '+fmtLon(m.lon);
+  $('objBrief').textContent=m.brief;
+  $('missionNo').textContent=(i+1)+' / '+MISSIONS.length;
+  $('threshNote').textContent='合格線：'+m.pass+' 分';
+  if(m.markers&&m.markers.length){ $('objCoord').textContent='見地圖三個標記，自己判斷'; }
+}
+
+function rating(total,pass){
+  if(total<pass) return {stars:0,word:'未達標',cls:'tag-bad'};
+  if(total<80) return {stars:1,word:'合格',cls:'tag-mid'};
+  if(total<93) return {stars:2,word:'良好',cls:'tag-ok'};
+  return {stars:3,word:'優異',cls:'tag-ok'};
+}
+
+$('captureBtn').addEventListener('click',()=>{
+  if(!state.started) return;
+  const e=evaluate(); const m=state.mission;
+  const passed=e.total>=m.pass;
+  const r=rating(e.total,m.pass);
+  if(passed) state.stars+=r.stars;
+  $('starTotal').textContent=state.stars;
+  showResult(e,r,passed);
+});
+
+const scrim=$('scrim'), modal=$('modal');
+function openModal(html){ modal.innerHTML=html; scrim.classList.add('show'); }
+function closeModal(){ scrim.classList.remove('show'); }
+
+function showBriefing(){
+  openModal(`
+    <div class="eyebrow">任務簡報 · MISSION BRIEF</div>
+    <h3>歡迎登上天韻載荷艙</h3>
+    <p>你是這次任務的<strong>載荷專家</strong>，要操作「天韻」紅外線相機，從太空為地球的溫室氣體拍攝清晰數據。</p>
+    <p>每次拍攝都要同時考慮幾件事：用<strong>十字鍵</strong>把<strong style="color:#ff6b6b">紅色準星</strong>對準目標坐標、選對偵測該氣體的<strong>紅外線波段</strong>、按<strong>日照強弱調整曝光</strong>，還要避開<strong>不斷飄移的雲層</strong>、等地球自轉到有陽光的一面。窗口下方的「即時數據清晰度」會告訴你現在拍會有多清。</p>
+    <div class="row">
+      <button class="btn" id="startBtn">開始任務</button>
+      <span style="font-size:12px;color:var(--ink-faint)">共 ${MISSIONS.length} 個任務，難度逐步提升</span>
+    </div>
+  `);
+  $('startBtn').addEventListener('click',()=>{
+    closeModal();
+    state.started=true;
+    loadMission(0);
+  });
+  $('startBtn').focus();
+}
+
+function bar(v){return `<div class="b"><i style="width:${Math.round(v*100)}%"></i></div>`;}
+function showResult(e,r,passed){
+  const m=state.mission;
+  const stars='★★★'.slice(0,r.stars)+'☆☆☆'.slice(0,3-r.stars);
+  let tip='';
+  if(!passed){
+    const subs=[['aim',e.aim],['band',e.band],['cloud',e.cloud],['lightExp',e.lightExp]].sort((a,b)=>a[1]-b[1]);
+    const worst=subs[0][0];
+    if(worst==='aim') tip='紅色準星沒對準目標，用十字鍵把它移到更貼近目標坐標。';
+    else if(worst==='band') tip='紅外線波段選錯了，要換成偵測「'+m.gasName+'」的波段。';
+    else if(worst==='cloud') tip='目標上空雲太厚，等雲層飄走、變晴朗再拍。';
+    else tip = e.lightAvail<0.4 ? '目標還在夜半球（太暗），等地球自轉到有陽光那一面。' : '曝光跟光照不配合：光猛要調短、光弱要調長。';
+  }
+  const lastMission=state.mi>=MISSIONS.length-1;
+  openModal(`
+    <div class="eyebrow">${passed?'拍攝成功 · CAPTURE OK':'數據不夠清 · RETRY'}</div>
+    <h3 style="color:${passed?'var(--jade)':'var(--rose)'}">${m.name}</h3>
+    <div style="display:flex;align-items:center;gap:16px;margin-top:6px">
+      <div class="score-big" style="color:${passed?'var(--jade)':'var(--rose)'}">${e.total}</div>
+      <div>
+        <div style="font-size:12px;color:var(--ink-faint)">數據清晰度（合格線 ${m.pass}）</div>
+        <div class="stars" style="color:var(--amber)">${passed?stars:''}</div>
+        <div style="font-size:13px;margin-top:2px" class="${r.cls}">${passed?('評級：'+r.word):'未達標'}</div>
+      </div>
+    </div>
+    <div class="subscores">
+      <div class="s"><div class="k">對準目標</div>${bar(e.aim)}</div>
+      <div class="s"><div class="k">波段配對</div>${bar(e.band)}</div>
+      <div class="s"><div class="k">避開雲層</div>${bar(e.cloud)}</div>
+      <div class="s"><div class="k">光照 × 曝光</div>${bar(e.lightExp)}</div>
+    </div>
+    ${passed?`<div class="fact"><div class="t">科學小知識</div><p>${m.fact}</p></div>`
+            :`<div class="fact" style="border-color:color-mix(in srgb,var(--amber) 40%,transparent);background:color-mix(in srgb,var(--amber) 8%,transparent)"><div class="t" style="color:var(--amber)">調整建議</div><p>${tip}</p></div>`}
+    <div class="row">
+      ${passed
+        ? (lastMission
+            ? `<button class="btn" id="finBtn">完成任務 · 查看證書</button>`
+            : `<button class="btn" id="nextBtn">下一個任務 →</button>`)
+        : `<button class="btn" id="retryBtn">繼續嘗試</button>`}
+    </div>
+  `);
+  if(passed&&!lastMission) $('nextBtn').addEventListener('click',()=>{ closeModal(); loadMission(state.mi+1); resetControlsHint(); });
+  else if(passed&&lastMission) $('finBtn').addEventListener('click',showCertificate);
+  else $('retryBtn').addEventListener('click',closeModal);
+}
+function resetControlsHint(){ }
+
+function showCertificate(){
+  const max=MISSIONS.length*3;
+  let title='見習載荷專家';
+  if(state.stars>=max) title='天韻首席科學家';
+  else if(state.stars>=max-3) title='資深載荷專家';
+  else if(state.stars>=max-6) title='正式載荷專家';
+  openModal(`
+    <div class="eyebrow">任務完成 · MISSION COMPLETE</div>
+    <h3>恭喜！你完成了全部 ${MISSIONS.length} 個任務</h3>
+    <p>你成功從太空為地球的溫室氣體拍下清晰數據，學會了像真正的載荷專家一樣，<strong>同時權衡多重變數</strong>：對準、波段、雲層、光照、曝光與時機。</p>
+    <div style="text-align:center;margin:16px 0">
+      <div class="stars" style="color:var(--amber);font-size:28px">${state.stars} / ${max} ★</div>
+      <div style="font-size:22px;font-weight:800;margin-top:8px;color:var(--cyan)">${title}</div>
+    </div>
+    <div class="fact"><div class="t">回到地面</div><p>溫室氣體看不見、摸不到，但會讓地球變暖。能從太空把它「拍出來」，科學家就能更準確地知道哪裏排放最多，幫助大家一起減碳、保護地球。</p></div>
+    <div class="row"><button class="btn" id="againBtn">再玩一次</button></div>
+  `);
+  sendDataToSheet(state.stars); // 【新增】上傳紀錄
+  $('againBtn').addEventListener('click',()=>{ state.stars=0; $('starTotal').textContent=0; closeModal(); loadMission(0); });
+}
+
+buildBands();
+setAim(0,0);
+resize();
+showBriefing();
+requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
