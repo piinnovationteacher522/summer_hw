@@ -1,0 +1,614 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>微重力體徵分析儀 · Microgravity Vitals Analyzer</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap');
+
+  :root{
+    --bg:#080B14; --panel:#10172A; --panel2:#161F38; --line:#233152;
+    --ink:#EAF0FB; --muted:#8493B0;
+    --earth:#4FB6E0; --earth-dim:rgba(79,182,224,.14);
+    --space:#FF8A5B; --space-dim:rgba(255,138,91,.14);
+    --amber:#FFC25E; --ok:#6FCF97; --warn:#FF6B6B;
+    --disp:'Space Grotesk',system-ui,sans-serif;
+    --mono:'IBM Plex Mono',ui-monospace,monospace;
+    --body:'Inter',system-ui,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    background:
+      radial-gradient(1200px 600px at 80% -10%, rgba(79,182,224,.08), transparent 60%),
+      radial-gradient(1000px 500px at 10% 110%, rgba(255,138,91,.07), transparent 60%),
+      var(--bg);
+    color:var(--ink); font-family:var(--body); line-height:1.5;
+    -webkit-font-smoothing:antialiased; min-height:100vh;
+  }
+  .wrap{max-width:1100px;margin:0 auto;padding:24px 20px 80px}
+
+  /* ---- Header ---- */
+  header{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;
+    border-bottom:1px solid var(--line);padding-bottom:18px;margin-bottom:26px;flex-wrap:wrap}
+  .brand .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.28em;
+    text-transform:uppercase;color:var(--amber);margin-bottom:6px}
+  .brand h1{font-family:var(--disp);font-weight:700;font-size:clamp(24px,4vw,38px);
+    margin:0;letter-spacing:-.01em}
+  .brand h1 .en{display:block;font-size:13px;letter-spacing:.22em;color:var(--muted);
+    font-weight:500;margin-top:4px}
+  .status{font-family:var(--mono);font-size:11px;text-align:right;color:var(--muted)}
+  .status .dot{display:inline-block;width:7px;height:7px;border-radius:50%;
+    background:var(--muted);margin-right:6px;vertical-align:middle}
+  .status .dot.live{background:var(--ok);box-shadow:0 0 8px var(--ok)}
+  .status .dot.load{background:var(--amber);animation:pulse 1s infinite}
+  @keyframes pulse{50%{opacity:.3}}
+
+  /* ---- Step labels ---- */
+  .step{font-family:var(--mono);font-size:11px;letter-spacing:.2em;text-transform:uppercase;
+    color:var(--muted);display:flex;align-items:center;gap:10px;margin:30px 0 14px}
+  .step b{color:var(--amber)}
+  .step::after{content:"";flex:1;height:1px;background:var(--line)}
+
+  .panel{background:linear-gradient(180deg,var(--panel),var(--panel2));
+    border:1px solid var(--line);border-radius:14px;padding:18px}
+
+  /* ---- Camera ---- */
+  .cam{display:grid;grid-template-columns:minmax(0,1fr) 260px;gap:18px;align-items:start}
+  .camstage{position:relative;border-radius:12px;overflow:hidden;background:#000;
+    aspect-ratio:1/1}
+  .camstage video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1);display:block}
+  .camstage .guide{position:absolute;inset:0;pointer-events:none}
+  .camstage .guide::before{content:"";position:absolute;left:50%;top:48%;
+    width:54%;height:68%;transform:translate(-50%,-50%);
+    border:2px dashed rgba(255,255,255,.45);border-radius:50%/55%}
+  .camstage .hint{position:absolute;left:0;right:0;bottom:0;padding:10px 12px;
+    font-family:var(--mono);font-size:11px;color:#dfe7f5;text-align:center;
+    background:linear-gradient(transparent,rgba(0,0,0,.65))}
+  .camstage.off{display:flex;align-items:center;justify-content:center}
+  .camstage.off .ph{color:var(--muted);font-family:var(--mono);font-size:12px;
+    text-align:center;padding:20px}
+  .camside p{font-size:13px;color:var(--muted);margin:0 0 14px}
+  .camside .crumbs{font-family:var(--mono);font-size:11px;color:var(--muted);
+    border-top:1px dashed var(--line);padding-top:12px;margin-top:14px;line-height:1.9}
+  .camside .crumbs b{color:var(--ink);font-weight:600}
+
+  .btn{font-family:var(--disp);font-weight:600;font-size:14px;border:1px solid var(--line);
+    background:var(--panel2);color:var(--ink);padding:11px 16px;border-radius:10px;
+    cursor:pointer;width:100%;margin-bottom:10px;transition:.15s;text-align:left;
+    display:flex;align-items:center;gap:10px}
+  .btn:hover{border-color:var(--amber);background:#1c2746}
+  .btn:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+  .btn[disabled]{opacity:.4;cursor:not-allowed}
+  .btn.primary{background:var(--amber);color:#1a1206;border-color:var(--amber)}
+  .btn.primary:hover{filter:brightness(1.07)}
+  .btn .k{font-family:var(--mono);font-size:11px;color:var(--muted);margin-left:auto}
+  .btn.primary .k{color:#5a4413}
+
+  /* ---- Console (signature) ---- */
+  .console{display:grid;grid-template-columns:1fr 92px 1fr;gap:0;align-items:stretch}
+  .face{padding:8px}
+  .face h3{font-family:var(--mono);font-size:12px;letter-spacing:.16em;text-transform:uppercase;
+    margin:0 0 10px;display:flex;align-items:center;gap:8px}
+  .face.earth h3{color:var(--earth)} .face.space h3{color:var(--space)}
+  .face h3 .tag{margin-left:auto;font-size:10px;border:1px solid var(--line);
+    border-radius:20px;padding:2px 9px;color:var(--muted);letter-spacing:.1em}
+  .canvasbox{position:relative;border-radius:12px;overflow:hidden;border:1px solid var(--line);
+    aspect-ratio:1/1;background:#0a0f1c}
+  .face.earth .canvasbox{box-shadow:inset 0 0 0 2px var(--earth-dim)}
+  .face.space .canvasbox{box-shadow:inset 0 0 0 2px var(--space-dim)}
+  .canvasbox canvas{width:100%;height:100%;display:block;cursor:crosshair;touch-action:none}
+  .canvasbox .empty{position:absolute;inset:0;display:flex;align-items:center;
+    justify-content:center;color:var(--muted);font-family:var(--mono);font-size:11px;text-align:center;padding:16px}
+
+  .delta{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;
+    border-left:1px dashed var(--line);border-right:1px dashed var(--line);position:relative}
+  .delta .lbl{font-family:var(--mono);font-size:10px;letter-spacing:.18em;color:var(--muted);
+    writing-mode:vertical-rl;text-orientation:mixed;position:absolute;left:6px;top:50%;transform:translateY(-50%)}
+  .gauge{width:18px;height:170px;border-radius:10px;background:#0a1020;border:1px solid var(--line);
+    position:relative;overflow:hidden}
+  .gauge .fill{position:absolute;left:0;right:0;bottom:0;height:0%;
+    background:linear-gradient(180deg,var(--space),var(--amber));transition:height .5s ease}
+  .gauge .mid{position:absolute;left:0;right:0;top:50%;height:1px;background:var(--line)}
+  .delta .val{font-family:var(--mono);font-weight:600;font-size:18px;color:var(--space)}
+  .delta .cap{font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:.1em}
+
+  /* ---- Measure toolbar ---- */
+  .tools{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0 4px}
+  .chip{font-family:var(--mono);font-size:12px;border:1px solid var(--line);background:var(--panel2);
+    color:var(--muted);padding:8px 13px;border-radius:20px;cursor:pointer;transition:.15s}
+  .chip:hover{border-color:var(--amber)}
+  .chip:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+  .chip.on{background:var(--amber);color:#1a1206;border-color:var(--amber)}
+  .hintbar{font-family:var(--mono);font-size:12px;color:var(--muted);margin:12px 0 0;
+    padding:10px 12px;border:1px dashed var(--line);border-radius:10px;background:rgba(255,194,94,.05)}
+  .hintbar b{color:var(--amber)}
+  .ministrip{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+  .ministrip .mini{font-family:var(--disp);font-weight:600;font-size:13px;border:1px solid var(--line);
+    background:var(--panel2);color:var(--muted);padding:8px 14px;border-radius:9px;cursor:pointer}
+  .ministrip .mini:hover{border-color:var(--warn);color:var(--ink)}
+
+  /* ---- Data log ---- */
+  table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:13px;margin-top:6px}
+  thead th{text-align:right;color:var(--muted);font-weight:500;font-size:11px;letter-spacing:.08em;
+    padding:10px 12px;border-bottom:1px solid var(--line);text-transform:uppercase}
+  thead th:first-child{text-align:left}
+  tbody td{padding:11px 12px;border-bottom:1px solid rgba(35,49,82,.5);text-align:right}
+  tbody td:first-child{text-align:left;font-family:var(--body);color:var(--ink)}
+  tbody td .e{color:var(--earth)} tbody td .s{color:var(--space)}
+  tbody td.dim{color:var(--muted)}
+  .pct.up{color:var(--space)} .pct.down{color:var(--earth)} .pct.zero{color:var(--muted)}
+  tbody tr.active td{background:rgba(255,194,94,.06)}
+
+  .analysis{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:14px}
+  .analysis .card{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:16px}
+  .analysis h4{font-family:var(--disp);font-size:15px;margin:0 0 8px}
+  .analysis p{font-size:13px;color:var(--muted);margin:0 0 8px}
+  .analysis .big{font-family:var(--mono);font-size:30px;font-weight:600;color:var(--amber)}
+  .analysis ul{margin:6px 0 0;padding-left:18px;font-size:12.5px;color:var(--muted)}
+  .analysis li{margin:4px 0}
+
+  .actions{display:flex;gap:10px;margin-top:16px;flex-wrap:wrap}
+  .actions .btn{width:auto; justify-content:center;}
+
+  footer{margin-top:40px;font-family:var(--mono);font-size:11px;color:var(--muted);
+    border-top:1px solid var(--line);padding-top:16px;line-height:1.8}
+
+  @media (max-width:780px){
+    .cam{grid-template-columns:1fr}
+    .console{grid-template-columns:1fr;gap:14px}
+    .delta{flex-direction:row;border:1px dashed var(--line);border-radius:12px;padding:12px;gap:16px}
+    .delta .lbl{position:static;writing-mode:horizontal-tb;transform:none}
+    .gauge{width:160px;height:18px}
+    .gauge .fill{top:0;bottom:0;left:0;width:0%;height:auto;background:linear-gradient(90deg,var(--amber),var(--space))}
+    .gauge .mid{left:50%;top:0;bottom:0;width:1px;height:auto}
+    .analysis{grid-template-columns:1fr}
+    .actions .btn{width:100%;}
+  }
+  @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="brand">
+      <div class="eyebrow">Flight Medicine · 探究實驗台</div>
+      <h1>微重力體徵分析儀
+        <span class="en">MICROGRAVITY VITALS ANALYZER</span>
+      </h1>
+    </div>
+    <div class="status">
+      <div><span class="dot" id="camDot"></span><span id="camStat">鏡頭：未啟動</span></div>
+      <div style="margin-top:6px"><span class="dot" id="aiDot"></span><span id="aiStat">AI 模組：偵測中…</span></div>
+    </div>
+  </header>
+
+  <div class="step"><b>01</b> 開啟鏡頭 · 校正面部位置</div>
+  <div class="panel">
+    <div class="cam">
+      <div class="camstage off" id="stage">
+        <div class="ph" id="ph">按右側「開啟鏡頭」啟動相機<br>將面部對準虛線橢圓內</div>
+        <video id="video" playsinline autoplay muted style="display:none"></video>
+        <div class="guide" id="guide" style="display:none"></div>
+        <div class="hint" id="hint" style="display:none">保持正面、表情放鬆，面部填滿橢圓框</div>
+      </div>
+      <div class="camside">
+        <p>這是你的「地球臉」基線。航天員進入微重力後，體液會向頭胸轉移，面部出現浮腫——我們會模擬出這個狀態並讓你量度差異。</p>
+        <button class="btn primary" id="startBtn">▶ 開啟鏡頭 <span class="k">CAM</span></button>
+        <button class="btn" id="shotBtn" disabled>◉ 擷取地球臉 <span class="k">SHOT</span></button>
+        <button class="btn" id="stopBtn" disabled>■ 關閉鏡頭 <span class="k">STOP</span></button>
+        <div class="crumbs">
+          <b>提示</b><br>
+          · 找均勻光線，避免背光<br>
+          · 鏡頭只在你的瀏覽器本機運作，<b>不會上傳</b>任何影像<br>
+          · 若鏡頭無法啟動，請用本機開啟此檔案並允許相機權限
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="step"><b>02 · 03</b> 模擬太空臉 · 量度比對特徵</div>
+  <div class="panel">
+    <div class="console">
+      <div class="face earth">
+        <h3>地球臉 <span class="tag">1g · 基線</span></h3>
+        <div class="canvasbox">
+          <canvas id="earthCv" width="480" height="480"></canvas>
+          <div class="empty" id="earthEmpty">尚未擷取</div>
+        </div>
+      </div>
+      <div class="delta">
+        <span class="lbl">FLUID&nbsp;SHIFT&nbsp;Δ</span>
+        <div class="gauge"><div class="mid"></div><div class="fill" id="gaugeFill"></div></div>
+        <div class="val" id="gaugeVal">—</div>
+        <div class="cap">浮腫指數</div>
+      </div>
+      <div class="face space">
+        <h3>太空臉 <span class="tag">µg · 模擬</span></h3>
+        <div class="canvasbox">
+          <canvas id="spaceCv" width="480" height="480"></canvas>
+          <div class="empty" id="spaceEmpty">等待地球臉</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tools" id="tools"></div>
+    <div class="hintbar" id="hintbar">先擷取地球臉，再選擇上方量度項目，於<b>兩張影像</b>各點選兩點完成量度。</div>
+    <div class="ministrip">
+      <button class="mini" id="clearOne">清除目前項目</button>
+      <button class="mini" id="clearAll">全部重置</button>
+      <button class="mini" id="aiBtn" style="display:none">[AI] 自動標記建議</button>
+    </div>
+  </div>
+
+  <div class="step"><b>04</b> 數據記錄 · 生理影響分析</div>
+  <div class="panel">
+    <table>
+      <thead><tr>
+        <th>量度特徵</th><th>地球臉 (px)</th><th>太空臉 (px)</th><th>差值 Δ</th><th>變化率</th>
+      </tr></thead>
+      <tbody id="tbody"></tbody>
+    </table>
+
+    <div class="analysis">
+      <div class="card">
+        <h4>整體浮腫指數</h4>
+        <div class="big" id="indexBig">—</div>
+        <p id="indexNote">完成至少一項闊度量度後，會計算面部腫脹的平均幅度。</p>
+      </div>
+      <div class="card">
+        <h4>科學探究結論</h4>
+        <p>微重力下失去重力下拉，<b style="color:var(--ink)">血液與淋巴液向頭胸轉移</b>，使面部組織間液增加，造成俗稱「太空臉」的浮腫。</p>
+        <ul>
+          <li>面頰／下頜<b style="color:var(--space)">變闊</b> → 軟組織含水量上升</li>
+          <li>眼裂<b style="color:var(--earth)">收窄</b> → 眼瞼腫脹</li>
+          <li>真實航天員亦會鼻塞、頭脹、味覺改變</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button class="btn primary" id="uploadBtn">⬆ 上傳數據記錄</button>
+    </div>
+  </div>
+
+  <footer>
+    微重力體徵分析儀 · 教學探究原型。所有影像處理皆在本機瀏覽器完成，不作儲存或上傳。<br>
+    「太空臉」模擬為示意效果，用以練習特徵量度與數據分析，非醫學影像。
+  </footer>
+
+</div>
+
+<script>
+/* ============ 接收主網頁參數 ============ */
+const urlParams = new URLSearchParams(window.location.search);
+const studentClass = urlParams.get('class') || '未設定班別';
+const studentId = urlParams.get('id') || '未設定學號';
+const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwHKY-YDXziCb0eCZtW-GQ9MGUQshKIIJk1qJgX7TPqTL1YwThCrvCld5YNSH9CSwpPew/exec";
+
+/* ============ 狀態 ============ */
+const METRICS = [
+  {id:'cheek', name:'面頰寬度',  type:'width', hint:'沿左右<b>面頰最闊處</b>（顴骨下方）各點一點'},
+  {id:'jaw',   name:'下頜寬度',  type:'width', hint:'點選<b>左右下頜角</b>，量度臉部下半闊度'},
+  {id:'eye',   name:'眼裂高度',  type:'height',hint:'點選同一隻眼的<b>上、下眼瞼</b>（浮腫時收窄）'},
+  {id:'custom',name:'自訂量度',  type:'width', hint:'自由點選兩個對應位置，於兩張臉量度同一特徵'}
+];
+const COLORS = {cheek:'#FFC25E', jaw:'#B98BFF', eye:'#5CE0C0', custom:'#FF9FB2'};
+
+const S = {
+  stream:null, captured:false, active:'cheek',
+  earthBmp:null, spaceBmp:null,
+  pts:{}, pending:null, aiReady:false,
+  lastIndex: null // 記錄最後計算出來的浮腫指數
+};
+METRICS.forEach(m=>S.pts[m.id]={earth:[],space:[]});
+
+const $ = id=>document.getElementById(id);
+const earthCv=$('earthCv'), spaceCv=$('spaceCv');
+const ectx=earthCv.getContext('2d'), sctx=spaceCv.getContext('2d');
+const W=480,H=480;
+
+/* ============ 上傳功能 ============ */
+function generateReportStr() {
+    let report = [];
+    METRICS.forEach(m => {
+        const e = valOf('earth', m.id);
+        const s = valOf('space', m.id);
+        if (e != null && s != null) {
+            const pct = ((s - e) / e * 100).toFixed(1);
+            report.push(`[${m.name}] 地球:${e.toFixed(1)}px, 太空:${s.toFixed(1)}px, 變化:${pct}%`);
+        }
+    });
+    if (S.lastIndex !== null) {
+        report.push(`[整體浮腫指數] +${S.lastIndex.toFixed(1)}%`);
+    } else {
+        report.push(`[整體浮腫指數] 未完成`);
+    }
+    return report.join(" || ");
+}
+
+$('uploadBtn').onclick = async () => {
+    const btn = $('uploadBtn');
+    btn.textContent = '⏳ 上傳中...';
+    btn.disabled = true;
+
+    const reportStr = generateReportStr();
+    const data = {
+        gameName: '微重力體徵分析',
+        studentClass: studentClass,
+        studentId: studentId,
+        playDate: new Date().toLocaleDateString('zh-HK'),
+        playTime: '完成',
+        score: reportStr
+    };
+
+    try {
+        await fetch(GAS_WEB_APP_URL, { 
+            method: 'POST', 
+            body: JSON.stringify(data), 
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' }
+        });
+        btn.textContent = '✅ 已成功上傳數據！';
+        // 幾秒後恢復按鈕
+        setTimeout(() => {
+            btn.textContent = '⬆ 重新上傳數據記錄';
+            btn.disabled = false;
+        }, 3000);
+    } catch (e) { 
+        console.error(e); 
+        btn.textContent = '❌ 上傳失敗，按此重試';
+        btn.disabled = false;
+    }
+};
+
+/* ============ 鏡頭 ============ */
+async function startCam(){
+  try{
+    S.stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:640,height:640},audio:false});
+    const v=$('video'); v.srcObject=S.stream; await v.play();
+    $('stage').classList.remove('off'); $('ph').style.display='none';
+    v.style.display='block'; $('guide').style.display='block'; $('hint').style.display='block';
+    $('shotBtn').disabled=false; $('stopBtn').disabled=false; $('startBtn').disabled=true;
+    $('camDot').className='dot live'; $('camStat').textContent='鏡頭：運作中';
+  }catch(e){
+    $('ph').innerHTML='⚠ 無法開啟鏡頭<br><span style="font-size:11px">'+
+      '請在本機下載此檔案、用瀏覽器開啟並允許相機權限。<br>('+(e.name||e.message||'error')+')</span>';
+    $('camStat').textContent='鏡頭：拒絕／不可用'; $('camDot').className='dot';
+  }
+}
+function stopCam(){
+  if(S.stream){S.stream.getTracks().forEach(t=>t.stop()); S.stream=null;}
+  $('video').style.display='none'; $('guide').style.display='none'; $('hint').style.display='none';
+  $('stage').classList.add('off'); $('ph').style.display='block';
+  $('ph').innerHTML='鏡頭已關閉<br>可重新開啟再次擷取';
+  $('shotBtn').disabled=true; $('stopBtn').disabled=true; $('startBtn').disabled=false;
+  $('camDot').className='dot'; $('camStat').textContent='鏡頭：未啟動';
+}
+
+/* 擷取：以中央正方形裁切並水平鏡像 */
+async function shoot(){
+  const v=$('video'); if(!v.videoWidth) return;
+  const side=Math.min(v.videoWidth,v.videoHeight);
+  const sx=(v.videoWidth-side)/2, sy=(v.videoHeight-side)/2;
+  const tmp=document.createElement('canvas'); tmp.width=W; tmp.height=H;
+  const t=tmp.getContext('2d');
+  t.translate(W,0); t.scale(-1,1);                 // 鏡像
+  t.drawImage(v,sx,sy,side,side,0,0,W,H);
+  S.earthBmp = t.getImageData(0,0,W,H);
+  S.spaceBmp = makeSpaceFace(S.earthBmp);
+  S.captured=true;
+  METRICS.forEach(m=>{S.pts[m.id].earth=[];S.pts[m.id].space=[];}); S.pending=null;
+  $('earthEmpty').style.display='none'; $('spaceEmpty').style.display='none';
+  renderFace('earth'); renderFace('space'); updateTable();
+  $('hintbar').innerHTML='已擷取！選擇上方量度項目，於<b>兩張影像</b>各點選兩點。';
+}
+
+/* ============ 太空臉特效 ============ */
+function makeSpaceFace(srcImg){
+  const sd=srcImg.data;
+  const out=new ImageData(W,H); const dd=out.data;
+  const cx=W*0.5, cy=H*0.60, R=W*0.46, k=1.5;       
+  const eyeY=H*0.40, band=H*0.10, halfW=W*0.34, pinch=1.32;
+  function sample(fx,fy,o){
+    fx=fx<0?0:fx>W-1?W-1:fx; fy=fy<0?0:fy>H-1?H-1:fy;
+    const x0=fx|0,y0=fy|0,x1=Math.min(W-1,x0+1),y1=Math.min(H-1,y0+1);
+    const ax=fx-x0,ay=fy-y0;
+    const i00=(y0*W+x0)*4,i10=(y0*W+x1)*4,i01=(y1*W+x0)*4,i11=(y1*W+x1)*4;
+    for(let c=0;c<4;c++){
+      const a=sd[i00+c]*(1-ax)+sd[i10+c]*ax, b=sd[i01+c]*(1-ax)+sd[i11+c]*ax;
+      o[c]=a*(1-ay)+b*ay;
+    }
+  }
+  const p=[0,0,0,0];
+  for(let y=0;y<H;y++) for(let x=0;x<W;x++){
+    let fx=x, fy=y;
+    const dx=x-cx, dy=y-cy, r=Math.sqrt(dx*dx+dy*dy);
+    if(r<R && r>0.001){ const f=R*Math.pow(r/R,k)/r; fx=cx+dx*f; fy=cy+dy*f; }
+    const ddy=y-eyeY;
+    if(Math.abs(ddy)<band && Math.abs(x-cx)<halfW){
+      const w=(1-Math.abs(x-cx)/halfW)*(1-Math.abs(ddy)/band);
+      fy = eyeY + (fy-eyeY)*(1+(pinch-1)*w);
+    }
+    sample(fx,fy,p);
+    const i=(y*W+x)*4;
+    dd[i]  =Math.min(255,p[0]*1.05+12);   
+    dd[i+1]=Math.min(255,p[1]*1.00+3);
+    dd[i+2]=Math.max(0,p[2]*0.93);        
+    dd[i+3]=255;
+  }
+  return out;
+}
+
+/* ============ 繪製 ============ */
+function renderFace(face){
+  const cv=face==='earth'?earthCv:spaceCv, ctx=face==='earth'?ectx:sctx;
+  const img=face==='earth'?S.earthBmp:S.spaceBmp;
+  if(!img) return;
+  ctx.putImageData(img,0,0);
+  METRICS.forEach(m=>{
+    const pts=S.pts[m.id][face];
+    drawMark(ctx,pts,COLORS[m.id],m.id===S.active);
+  });
+  if(S.pending && S.pending.face===face){
+    drawMark(ctx,[S.pending.p],COLORS[S.active],true);
+  }
+}
+function drawMark(ctx,pts,color,active){
+  if(!pts.length) return;
+  ctx.save();
+  ctx.lineWidth=active?3:1.6; ctx.strokeStyle=color; ctx.fillStyle=color;
+  ctx.globalAlpha=active?1:0.55;
+  if(pts.length===2){
+    ctx.beginPath();ctx.moveTo(pts[0].x,pts[0].y);ctx.lineTo(pts[1].x,pts[1].y);ctx.stroke();
+    const d=dist(pts[0],pts[1]);
+    const mx=(pts[0].x+pts[1].x)/2, my=(pts[0].y+pts[1].y)/2;
+    ctx.font='600 15px IBM Plex Mono, monospace';
+    ctx.fillStyle='rgba(8,11,20,.8)';
+    const txt=Math.round(d)+'px', tw=ctx.measureText(txt).width;
+    ctx.fillRect(mx-tw/2-5,my-22,tw+10,18);
+    ctx.fillStyle=color; ctx.textAlign='center'; ctx.fillText(txt,mx,my-8);
+  }
+  pts.forEach(p=>{
+    ctx.beginPath();ctx.arc(p.x,p.y,active?6:4,0,7);ctx.fill();
+    ctx.beginPath();ctx.arc(p.x,p.y,active?6:4,0,7);ctx.strokeStyle='#fff';ctx.globalAlpha=.9;ctx.lineWidth=1.5;ctx.stroke();
+  });
+  ctx.restore();
+}
+function dist(a,b){return Math.hypot(a.x-b.x,a.y-b.y);}
+
+/* ============ 點選量度 ============ */
+function canvasClick(face,ev){
+  if(!S.captured) return;
+  const cv=face==='earth'?earthCv:spaceCv;
+  const r=cv.getBoundingClientRect();
+  const cx=(ev.touches?ev.touches[0].clientX:ev.clientX);
+  const cy=(ev.touches?ev.touches[0].clientY:ev.clientY);
+  const x=(cx-r.left)*(W/r.width), y=(cy-r.top)*(H/r.height);
+  const arr=S.pts[S.active][face];
+  if(arr.length>=2){arr.length=0;}            
+  if(S.pending && S.pending.face===face){
+    arr.push(S.pending.p, {x,y}); S.pending=null;
+  }else{
+    S.pending={face,p:{x,y}};
+  }
+  renderFace(face); updateTable();
+}
+['earth','space'].forEach(f=>{
+  const cv=f==='earth'?earthCv:spaceCv;
+  cv.addEventListener('click',e=>canvasClick(f,e));
+});
+
+/* ============ 工具列 ============ */
+function buildTools(){
+  const box=$('tools');
+  METRICS.forEach(m=>{
+    const b=document.createElement('button');
+    b.className='chip'+(m.id===S.active?' on':''); b.dataset.id=m.id;
+    b.innerHTML='● '.replace('●','<span style="color:'+COLORS[m.id]+'">●</span>')+m.name;
+    b.onclick=()=>{S.active=m.id;S.pending=null;syncTools();updateHint();renderFace('earth');renderFace('space');updateTable();};
+    box.appendChild(b);
+  });
+}
+function syncTools(){[...$('tools').children].forEach(c=>c.classList.toggle('on',c.dataset.id===S.active));}
+function updateHint(){
+  const m=METRICS.find(x=>x.id===S.active);
+  $('hintbar').innerHTML='量度<b>'+m.name+'</b>：'+m.hint+'。需於<b>地球臉</b>及<b>太空臉</b>各完成一條。';
+}
+
+/* ============ 數據表 + 指數 ============ */
+function valOf(face,id){const a=S.pts[id][face];return a.length===2?dist(a[0],a[1]):null;}
+function updateTable(){
+  const tb=$('tbody'); tb.innerHTML='';
+  let shiftSum=0, shiftN=0;
+  METRICS.forEach(m=>{
+    const e=valOf('earth',m.id), s=valOf('space',m.id);
+    const tr=document.createElement('tr'); if(m.id===S.active)tr.className='active';
+    let dCell='<td class="dim">—</td>', pCell='<td class="dim">—</td>';
+    if(e!=null&&s!=null){
+      const d=s-e, pct=(d/e*100);
+      const cls=pct>1?'up':pct<-1?'down':'zero';
+      const sign=pct>0?'+':'';
+      dCell='<td>'+(d>0?'+':'')+d.toFixed(1)+'</td>';
+      pCell='<td class="pct '+cls+'">'+sign+pct.toFixed(1)+'%</td>';
+      if(m.type==='width'){shiftSum+=pct;shiftN++;}
+    }
+    tr.innerHTML='<td><span style="color:'+COLORS[m.id]+'">●</span> '+m.name+'</td>'+
+      '<td>'+(e!=null?'<span class="e">'+e.toFixed(1)+'</span>':'<span class="dim">—</span>')+'</td>'+
+      '<td>'+(s!=null?'<span class="s">'+s.toFixed(1)+'</span>':'<span class="dim">—</span>')+'</td>'+
+      dCell+pCell;
+    tb.appendChild(tr);
+  });
+  
+  const fill=$('gaugeFill'), gv=$('gaugeVal'), big=$('indexBig'), note=$('indexNote');
+  if(shiftN>0){
+    const idx=shiftSum/shiftN;
+    S.lastIndex = idx; // 保存起來供上傳
+    const pc=Math.max(0,Math.min(100,idx*4));   
+    fill.style.height=pc+'%'; if(window.matchMedia('(max-width:780px)').matches){fill.style.width=pc+'%';}
+    gv.textContent=(idx>0?'+':'')+idx.toFixed(1)+'%'; big.textContent=(idx>0?'+':'')+idx.toFixed(1)+'%';
+    note.innerHTML='面部闊度特徵平均增加 <b style="color:var(--ink)">'+idx.toFixed(1)+
+      '%</b>，反映體液轉移造成的軟組織腫脹幅度（共 '+shiftN+' 項）。';
+  }else{
+    S.lastIndex = null;
+    fill.style.height='0%'; gv.textContent='—'; big.textContent='—';
+    note.textContent='完成至少一項闊度量度（面頰／下頜／自訂）後，會計算面部腫脹的平均幅度。';
+  }
+}
+
+/* ============ 清除 ============ */
+$('clearOne').onclick=()=>{S.pts[S.active].earth=[];S.pts[S.active].space=[];S.pending=null;renderFace('earth');renderFace('space');updateTable();};
+$('clearAll').onclick=()=>{METRICS.forEach(m=>{S.pts[m.id].earth=[];S.pts[m.id].space=[];});S.pending=null;renderFace('earth');renderFace('space');updateTable();};
+
+/* ============ 按鈕 ============ */
+$('startBtn').onclick=startCam; $('stopBtn').onclick=stopCam; $('shotBtn').onclick=shoot;
+
+/* ============ 可選 face-api.js 自動標記 ============ */
+(function loadAI(){
+  const url='https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.js';
+  const model='https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/';
+  const sc=document.createElement('script'); sc.src=url;
+  const timeout=setTimeout(()=>fail('逾時'),9000);
+  sc.onload=async()=>{
+    try{
+      await faceapi.nets.tinyFaceDetector.loadFromUri(model);
+      await faceapi.nets.faceLandmark68Net.loadFromUri(model);
+      clearTimeout(timeout); S.aiReady=true;
+      $('aiDot').className='dot live'; $('aiStat').textContent='AI 模組：已就緒';
+      $('aiBtn').style.display='inline-block';
+    }catch(e){fail('模型');}
+  };
+  sc.onerror=()=>fail('離線');
+  document.head.appendChild(sc);
+  function fail(why){clearTimeout(timeout);$('aiDot').className='dot';$('aiStat').textContent='AI：手動模式';}
+})();
+
+$('aiBtn').onclick=async()=>{
+  if(!S.aiReady||!S.captured) return;
+  $('aiBtn').textContent='⚙ 偵測中…';
+  try{
+    for(const face of ['earth','space']){
+      const img=face==='earth'?S.earthBmp:S.spaceBmp;
+      const tmp=document.createElement('canvas');tmp.width=W;tmp.height=H;
+      tmp.getContext('2d').putImageData(img,0,0);
+      const det=await faceapi.detectSingleFace(tmp,new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks();
+      if(!det) continue;
+      const lm=det.landmarks.positions;          
+      S.pts.cheek[face]=[{x:lm[1].x,y:lm[1].y},{x:lm[15].x,y:lm[15].y}];
+      S.pts.jaw[face]  =[{x:lm[3].x,y:lm[3].y},{x:lm[13].x,y:lm[13].y}];
+      const up={x:(lm[37].x+lm[38].x)/2,y:(lm[37].y+lm[38].y)/2};
+      const dn={x:(lm[40].x+lm[41].x)/2,y:(lm[40].y+lm[41].y)/2};
+      S.pts.eye[face]=[up,dn];
+    }
+    renderFace('earth');renderFace('space');updateTable();
+    $('hintbar').innerHTML='已用 AI 自動標記建議點，你可<b>拖動觀察</b>或重新點選微調，再記錄數據。';
+  }catch(e){$('hintbar').textContent='自動標記失敗，請改用手動量度。';}
+  $('aiBtn').textContent='[AI] 自動標記建議';
+};
+
+/* ============ 初始化 ============ */
+buildTools(); updateHint(); updateTable();
+</script>
+</body>
+</html>
