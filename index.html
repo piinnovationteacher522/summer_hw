@@ -2,7 +2,7 @@
 <html lang="zh-HK">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="referrer" content="strict-origin-when-cross-origin" />
     <title>學生遊戲與實驗平台</title>
     <style>
@@ -21,19 +21,51 @@
         button:hover { background-color: #004d40; }
         
         #dashboard-container { display: none; height: 100dvh; flex-direction: row; }
-        #sidebar { width: 250px; background-color: #263238; color: white; display: flex; flex-direction: column; flex-shrink: 0; }
+        
+        /* 側邊欄樣式與縮放動畫 */
+        #sidebar { 
+            width: 250px; 
+            background-color: #263238; 
+            color: white; 
+            display: flex; 
+            flex-direction: column; 
+            flex-shrink: 0; 
+            transition: width 0.3s ease-in-out, max-height 0.3s ease-in-out;
+            overflow-x: hidden;
+            white-space: nowrap;
+        }
+        #sidebar.collapsed { width: 0; }
+        
         .student-info { padding: 20px; background-color: #1a2327; text-align: center; }
         .menu-list { flex-grow: 1; overflow-y: auto; list-style-type: none; padding-bottom: 20px; -webkit-overflow-scrolling: touch; }
         .menu-section { padding: 15px 20px 5px 20px; font-size: 0.9em; font-weight: bold; color: #80cbc4; text-transform: uppercase; border-bottom: 1px solid #37474f; margin-top: 10px; }
         .menu-item { padding: 12px 20px 12px 30px; cursor: pointer; transition: 0.2s; font-size: 0.95em; }
         .menu-item:hover, .menu-item.active { background-color: #00796b; border-left: 4px solid #b2dfdb; padding-left: 26px; }
         
+        /* 內容區與切換按鈕 */
         #content-area { flex-grow: 1; position: relative; min-height: 0; min-width: 0; }
         iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none; background-color: white; }
         
+        #toggle-sidebar-btn {
+            position: absolute; top: 12px; left: 12px; z-index: 1000;
+            background: rgba(0, 121, 107, 0.85); color: white; border: none;
+            border-radius: 8px; width: 44px; height: 44px; font-size: 24px;
+            cursor: pointer; display: flex; align-items: center; justify-content: center;
+            backdrop-filter: blur(4px); box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+            transition: 0.3s; padding: 0;
+        }
+        #toggle-sidebar-btn:hover { background: rgba(0, 77, 64, 1); transform: scale(1.05); }
+        
+        /* 手機版響應式設計 */
         @media (max-width: 768px) {
             #dashboard-container { flex-direction: column; }
-            #sidebar { width: 100%; height: auto; flex-direction: column; }
+            #sidebar { 
+                width: 100%; 
+                height: auto; 
+                max-height: 350px; 
+                flex-direction: column; 
+            }
+            #sidebar.collapsed { width: 100%; max-height: 0; }
             .menu-list { display: flex; flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; white-space: nowrap; padding-bottom: 0; scrollbar-width: none; }
             .menu-list::-webkit-scrollbar { display: none; }
             .menu-section { border-bottom: none; border-right: 1px solid #37474f; padding: 15px; margin-top: 0; }
@@ -63,6 +95,7 @@
             <button onclick="login()">進入平台</button>
         </div>
     </div>
+
     <div id="dashboard-container">
         <div id="sidebar">
             <div class="student-info">
@@ -72,6 +105,7 @@
             <ul class="menu-list" id="menu"></ul>
         </div>
         <div id="content-area">
+            <button id="toggle-sidebar-btn" onclick="toggleSidebar()" title="切換選單">☰</button>
             <iframe id="game-frame" src="about:blank" allowfullscreen allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" referrerpolicy="strict-origin-when-cross-origin"></iframe>
         </div>
     </div>
@@ -89,11 +123,11 @@
             {
                 sectionName: "STEM 小遊戲",
                 items: [
-                    { name: "太空垃圾", path: "太空垃圾.html" },
-                    { name: "回收挑戰", path: "回收挑戰.html" },
-                    { name: "太空無重力", path: "太空無重力.html" },
-                    { name: "農場", path: "農場.html" },
-                    { name: "太空人行李", path: "太空人行李.html" }
+                    { name: "遊戲一 太空機械人撿垃圾", path: "太空垃圾.html" },
+                    { name: "遊戲二 環保小尖兵分類大作戰", path: "回收挑戰.html" },
+                    { name: "遊戲三 太空人收拾行李", path: "太空人行李.html" },
+                    { name: "遊戲四 迷路太空人救援", path: "太空無重力.html" },
+                    { name: "活動五 數學農場牧羊犬", path: "農場.html" }
                 ]
             }
         ];
@@ -110,11 +144,11 @@
             {
                 sectionName: "STEM 小遊戲",
                 items: [
-                    { name: "天韻載荷艙", path: "天韻載荷艙.html" },
-                    { name: "無人機送貨", path: "無人機送貨.html" },
-                    { name: "建橋", path: "建橋.html" },
-                    { name: "城市電子拯救隊", path: "城市電子拯救隊.html" },
-                    { name: "微重力體徵分析儀", path: "微重力體徵分析儀.html" } // 已替換
+                    { name: "遊戲一 天韻載荷艙", path: "天韻載荷艙.html" },
+                    { name: "遊戲二 太空臉變變變", path: "微重力體徵分析儀.html" },
+                    { name: "遊戲三 無人機派送員", path: "無人機送貨.html" },
+                    { name: "遊戲四 建橋大亨", path: "建橋.html" },
+                    { name: "活動五 城市電力拯救隊", path: "城市電子拯救隊.html" }
                 ]
             }
         ];
@@ -186,6 +220,17 @@
             if (clickedElement) {
                 clickedElement.classList.add('active');
             }
+            
+            // 手機版載入遊戲後自動收起選單
+            if (window.innerWidth <= 768) {
+                document.getElementById('sidebar').classList.add('collapsed');
+            }
+        }
+
+        // 側邊欄縮放切換功能
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            sidebar.classList.toggle('collapsed');
         }
     </script>
 </body>
