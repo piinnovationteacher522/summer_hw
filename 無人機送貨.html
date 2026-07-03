@@ -2,7 +2,7 @@
 <html lang="zh-Hant">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>無人機座標任務 · Drone Coordinate Mission</title>
 <style>
   :root{
@@ -24,9 +24,11 @@
   html,body{margin:0;height:100%;overflow:hidden;}
   body{
     font-family:"Baloo 2","Nunito",-apple-system,"PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
-    color:var(--ink); background:#bfe6ff; user-select:none;
+    color:var(--ink); background:#bfe6ff; user-select:none; touch-action: manipulation;
   }
-  #scene{position:fixed;inset:0;display:block;}
+  
+  /* 3D 畫布全螢幕填滿 */
+  #scene{position:fixed; inset:0; display:block; width:100vw; height:100vh;}
   .nofx{transition:none!important;}
 
   #topbar{
@@ -95,48 +97,92 @@
     margin:0 2px 7px;display:flex;align-items:center;gap:6px;}
   #minimap{display:block;border-radius:10px;background:#eaf6ff;}
 
+  /* 輸入介面靠右、縮放設定 */
   #control{
-    position:fixed;left:50%;bottom:14px;transform:translateX(-50%);z-index:18;
-    width:min(620px,calc(100% - 24px));
+    position:fixed; right:14px; bottom:14px; z-index:18; /* 固定在右下角 */
+    width:320px; 
     background:var(--panel);border:2px solid var(--line);border-radius:22px;
     box-shadow:var(--shadow);padding:12px 14px;
+    transition: max-height 0.3s ease-out, padding 0.3s ease-out; /* 縮放動畫 */
+    max-height: 500px;
+    overflow: hidden;
   }
+  
+  /* 縮小狀態 */
+  #control.collapsed {
+      max-height: 48px;
+      padding: 10px 14px;
+  }
+  
+  /* 縮放切換按鈕 */
+  #toggle-ctrl-btn {
+      position: absolute;
+      top: 10px;
+      right: 14px;
+      background: none;
+      border: none;
+      font-size: 18px;
+      color: var(--ink-soft);
+      cursor: pointer;
+      font-weight: bold;
+      z-index: 20;
+  }
+
+  /* 隱藏內容 */
+  #control-inner {
+      transition: opacity 0.2s;
+  }
+  #control.collapsed #control-inner {
+      opacity: 0;
+      pointer-events: none;
+  }
+
+  #control-header {
+      font-weight: 800;
+      font-size: 15px;
+      color: var(--ink);
+      margin-bottom: 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+  }
+
   #status{
-    text-align:center;font-weight:800;font-size:15px;color:var(--ink-soft);
+    text-align:center;font-weight:800;font-size:14px;color:var(--ink-soft);
     min-height:20px;margin-bottom:8px;
   }
   #status .live{color:var(--brand);}
-  .ctrlRow{display:flex;gap:10px;align-items:stretch;}
+  .ctrlRow{display:flex;gap:8px;align-items:stretch;}
   .coordBox{
-    flex:1;display:flex;gap:8px;
+    flex:1;display:flex;gap:6px;
   }
   .field{
-    flex:1;background:var(--panel-2);border:3px solid var(--line);border-radius:14px;
-    padding:6px 10px;cursor:pointer;transition:border-color .15s,background .15s;
+    flex:1;background:var(--panel-2);border:3px solid var(--line);border-radius:12px;
+    padding:4px 8px;cursor:pointer;transition:border-color .15s,background .15s;
     display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:0;
   }
-  .field .lab{font-size:12px;font-weight:800;color:var(--ink-soft);letter-spacing:.5px;}
-  .field .val{font-size:30px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums;
-    color:var(--ink);min-height:32px;}
+  .field .lab{font-size:11px;font-weight:800;color:var(--ink-soft);letter-spacing:.5px;}
+  .field .val{font-size:24px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums;
+    color:var(--ink);min-height:28px;}
   .field.xf{border-color:#9ecbff;}
   .field.yf{border-color:#ffd86b;}
   .field.active{background:#fff;box-shadow:0 0 0 4px rgba(255,138,43,.18);border-color:var(--brand);}
   .goBtn{
-    flex:none;width:104px;border:none;border-radius:16px;cursor:pointer;
+    flex:none;width:80px;border:none;border-radius:14px;cursor:pointer;
     background:linear-gradient(180deg,var(--go),var(--go-d));color:#fff;
-    font-weight:800;font-size:17px;display:flex;flex-direction:column;align-items:center;
+    font-weight:800;font-size:15px;display:flex;flex-direction:column;align-items:center;
     justify-content:center;gap:2px;box-shadow:0 6px 0 #0c8049;
   }
-  .goBtn .ico{font-size:22px;}
+  .goBtn .ico{font-size:18px;}
   .goBtn:active{transform:translateY(4px);box-shadow:0 2px 0 #0c8049;}
   .goBtn:disabled{filter:grayscale(.6);opacity:.6;box-shadow:0 6px 0 #6b8c79;cursor:not-allowed;}
 
-  #keypad{display:grid;grid-template-columns:repeat(5,1fr);gap:7px;margin-top:10px;}
+  #keypad{display:grid;grid-template-columns:repeat(5,1fr);gap:5px;margin-top:8px;}
   .key{
-    border:2px solid var(--line);background:#fff;border-radius:12px;
-    padding:10px 0;font-size:20px;font-weight:800;color:var(--ink);cursor:pointer;
+    border:2px solid var(--line);background:#fff;border-radius:10px;
+    padding:6px 0;font-size:18px;font-weight:800;color:var(--ink);cursor:pointer;
   }
-  .key.fn{background:var(--panel-2);color:var(--ink-soft);font-size:16px;}
+  .key.fn{background:var(--panel-2);color:var(--ink-soft);font-size:14px;}
   .key:active{transform:translateY(2px);background:var(--panel-2);}
 
   #toast{
@@ -184,6 +230,9 @@
   .sw{width:14px;height:14px;border-radius:5px;display:inline-block;}
   .stars{font-size:38px;letter-spacing:6px;}
 
+  @media (max-width:768px){
+    #control{ width: min(340px, calc(100% - 20px)); right:10px; bottom:10px; }
+  }
   @media (max-width:560px){
     #missionPanel{width:200px;top:60px;left:10px;}
     #mapWrap{top:60px;right:10px;padding:7px;}
@@ -220,19 +269,25 @@
 </div>
 
 <div id="control">
-  <div id="status">輸入座標，然後按起飛 ✈️</div>
-  <div class="ctrlRow">
-    <div class="coordBox">
-      <div class="field xf active" id="fieldX" data-f="x">
-        <div class="lab">X（橫）</div><div class="val" id="valX">0</div>
-      </div>
-      <div class="field yf" id="fieldY" data-f="y">
-        <div class="lab">Y（直）</div><div class="val" id="valY">0</div>
-      </div>
-    </div>
-    <button class="goBtn" id="btnGo"><span class="ico">🚀</span>起飛</button>
+  <div id="control-header">
+     <span>🕹️ 操作面板</span>
+     <button id="toggle-ctrl-btn" onclick="toggleControlPanel()">－</button>
   </div>
-  <div id="keypad"></div>
+  <div id="control-inner">
+      <div id="status">輸入座標，然後按起飛 ✈️</div>
+      <div class="ctrlRow">
+        <div class="coordBox">
+          <div class="field xf active" id="fieldX" data-f="x">
+            <div class="lab">X（橫）</div><div class="val" id="valX">0</div>
+          </div>
+          <div class="field yf" id="fieldY" data-f="y">
+            <div class="lab">Y（直）</div><div class="val" id="valY">0</div>
+          </div>
+        </div>
+        <button class="goBtn" id="btnGo"><span class="ico">🚀</span>起飛</button>
+      </div>
+      <div id="keypad"></div>
+  </div>
 </div>
 
 <div id="toast"></div>
@@ -272,6 +327,7 @@
     <div class="big">🏆🚁</div>
     <h1>恭喜！你係座標派送大師！</h1>
     <p>你完成咗全部 10 關任務，總共拎到 <b id="finalStars" style="color:var(--brand);font-size:20px;">0</b> 粒星 ⭐</p>
+    <p id="upload-status" style="font-weight:bold; color:#19b86b;">⏳ 雲端成績儲存中...</p>
     <p>你已經學識點樣用 (X , Y) 座標準確定位喇！</p>
     <button class="btn alt" id="btnRestartAll">由頭再玩</button>
   </div>
@@ -297,6 +353,8 @@ async function sendDataToSheet(finalScore) {
     };
     try {
         await fetch(GAS_WEB_APP_URL, { method: 'POST', body: JSON.stringify(data), headers: { 'Content-Type': 'text/plain;charset=utf-8' }});
+        const statusEl = document.getElementById('upload-status');
+        if (statusEl) statusEl.innerHTML = "✅ 成績已上傳！";
     } catch (e) { console.error(e); }
 }
 
@@ -1057,6 +1115,18 @@ function goToLevel(i){
   document.getElementById('finalScreen').classList.remove('show');
 }
 
+// 【新增】縮放控制台的函數
+function toggleControlPanel() {
+    const ctrl = document.getElementById('control');
+    const btn = document.getElementById('toggle-ctrl-btn');
+    ctrl.classList.toggle('collapsed');
+    if (ctrl.classList.contains('collapsed')) {
+        btn.textContent = '＋';
+    } else {
+        btn.textContent = '－';
+    }
+}
+
 function bindUI(){
   document.getElementById('fieldX').addEventListener('click',()=>setActiveField('x'));
   document.getElementById('fieldY').addEventListener('click',()=>setActiveField('y'));
@@ -1068,7 +1138,6 @@ function bindUI(){
     document.getElementById('startScreen').classList.remove('show');
   });
   
-  // 【更新】在此處加入雲端儲存觸發邏輯
   document.getElementById('btnContinue').addEventListener('click', async ()=>{
     if(state.lv>=LEVELS.length-1){
       document.getElementById('winScreen').classList.remove('show');
