@@ -22,7 +22,6 @@
         
         #dashboard-container { display: none; height: 100dvh; flex-direction: row; }
         
-        /* 側邊欄樣式與縮放動畫 */
         #sidebar { 
             width: 250px; 
             background-color: #263238; 
@@ -42,7 +41,6 @@
         .menu-item { padding: 12px 20px 12px 30px; cursor: pointer; transition: 0.2s; font-size: 0.95em; }
         .menu-item:hover, .menu-item.active { background-color: #00796b; border-left: 4px solid #b2dfdb; padding-left: 26px; }
         
-        /* 內容區與切換按鈕 */
         #content-area { flex-grow: 1; position: relative; min-height: 0; min-width: 0; }
         iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none; background-color: white; }
         
@@ -56,7 +54,6 @@
         }
         #toggle-sidebar-btn:hover { background: rgba(0, 77, 64, 1); transform: scale(1.05); }
         
-        /* 手機版響應式設計 */
         @media (max-width: 768px) {
             #dashboard-container { flex-direction: column; }
             #sidebar { 
@@ -132,13 +129,14 @@
             }
         ];
 
-        const seniorMenu = [
+        // 預設的高小選單架構
+        const seniorMenuTemplate = [
             {
                 sectionName: "冰壺發射器",
                 items: [
                     { name: "1. 知識講解", path: "https://www.youtube.com/embed/kJ9adbwzGLI" }, 
                     { name: "2. 硬件組裝及簡易測試", path: "https://www.youtube.com/embed/SQaF9UKLIbg" },
-                    { name: "3. 實驗記錄", path: "record1.html" }
+                    { name: "3. 實驗記錄", path: "PLACEHOLDER" } // 稍後會在 login 函式中替換
                 ]
             },
             {
@@ -168,8 +166,27 @@
             const gradeLetter = studentClass.charAt(0); 
             const isJunior = (gradeLetter === '1' || gradeLetter === '2');
             
-            const menuData = isJunior ? juniorMenu : seniorMenu;
-            const levelText = isJunior ? "低小分頁" : "高小分頁";
+            let menuData;
+            let levelText;
+
+            if (isJunior) {
+                menuData = juniorMenu;
+                levelText = "低小分頁";
+            } else {
+                // 如果是高小，深拷貝一份選單架構，避免改到原始模板
+                menuData = JSON.parse(JSON.stringify(seniorMenuTemplate));
+                levelText = "高小分頁";
+                
+                // 判斷是三四年級還是五六年級，並指派對應的實驗記錄檔案
+                let recordPath = (gradeLetter === '3' || gradeLetter === '4') ? "3-4exp.html" : "5-6exp.html";
+                
+                // 尋找「3. 實驗記錄」的項目並替換路徑
+                menuData[0].items.forEach(item => {
+                    if (item.name === "3. 實驗記錄") {
+                        item.path = recordPath;
+                    }
+                });
+            }
 
             document.getElementById('display-student-info').innerText = `${studentClass} 班 - ${studentId} 號`;
             document.getElementById('display-level').innerText = levelText;
@@ -221,13 +238,11 @@
                 clickedElement.classList.add('active');
             }
             
-            // 手機版載入遊戲後自動收起選單
             if (window.innerWidth <= 768) {
                 document.getElementById('sidebar').classList.add('collapsed');
             }
         }
 
-        // 側邊欄縮放切換功能
         function toggleSidebar() {
             const sidebar = document.getElementById('sidebar');
             sidebar.classList.toggle('collapsed');

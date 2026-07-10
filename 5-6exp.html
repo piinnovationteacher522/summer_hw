@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>冰壺發射器 · 進階實驗報告</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
+        body { margin: 0; background-color: #f8fafc; font-family: 'PingFang TC', 'Microsoft JhengHei', sans-serif; color: #1e293b; }
+        
+        #topbar {
+            position: fixed; top: 0; left: 0; right: 0; z-index: 20;
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 12px 16px; background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(8px); border-bottom: 2px solid #cbd5e1;
+        }
+        
+        .container { max-width: 800px; margin: 70px auto 40px; padding: 0 16px; }
+        .panel { background: #ffffff; border: 2px solid #e2e8f0; border-radius: 16px; padding: 24px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); margin-bottom: 24px; }
+        
+        h1 { font-size: 1.6rem; font-weight: 900; color: #0f172a; text-align: center; margin-bottom: 8px; border-bottom: 3px solid #3b82f6; display: inline-block; padding-bottom: 4px; }
+        .title-wrapper { text-align: center; margin-bottom: 20px; }
+        
+        .q-section { margin-bottom: 24px; padding-bottom: 20px; border-bottom: 1px dashed #cbd5e1; }
+        .q-section:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+        .q-title { font-size: 1.2rem; font-weight: 900; color: #1e40af; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+        .q-text { font-size: 1rem; font-weight: bold; color: #334155; margin-bottom: 12px; line-height: 1.6; }
+        
+        .options { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+        .option-label { flex: 1; min-width: 100px; text-align: center; cursor: pointer; }
+        .option-label input { display: none; }
+        .option-card {
+            background: #f1f5f9; border: 2px solid #cbd5e1; border-radius: 12px;
+            padding: 10px; font-size: 1.05rem; font-weight: 800; color: #475569;
+            transition: all 0.2s;
+        }
+        .option-label input:checked + .option-card { background: #eff6ff; border-color: #3b82f6; color: #1d4ed8; }
+
+        /* 表格設計 */
+        .table-wrapper { overflow-x: auto; margin-top: 10px; margin-bottom: 16px; border-radius: 12px; border: 1px solid #cbd5e1; }
+        table { width: 100%; border-collapse: collapse; min-width: 500px; }
+        th, td { border: 1px solid #cbd5e1; padding: 12px; text-align: center; }
+        th { background-color: #f8fafc; font-weight: 800; color: #334155; font-size: 0.95rem; }
+        td input[type="number"] { width: 100%; padding: 8px; border: 1px solid #94a3b8; border-radius: 6px; text-align: center; font-size: 1rem; font-weight: bold; }
+        td input[type="number"]:focus { outline: 2px solid #3b82f6; }
+
+        .submit-btn {
+            width: 100%; background: #2563eb; color: white; font-size: 1.2rem; font-weight: 900;
+            border: none; border-radius: 12px; padding: 16px; margin-top: 10px; cursor: pointer;
+            box-shadow: 0 4px 0 #1d4ed8; transition: transform 0.1s, box-shadow 0.1s;
+        }
+        .submit-btn:active { transform: translateY(4px); box-shadow: 0 0 0 #1d4ed8; }
+        .submit-btn:disabled { background: #9ca3af; box-shadow: 0 4px 0 #6b7280; cursor: not-allowed; }
+
+        .modal-overlay { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.6); z-index: 100; display: none; align-items: center; justify-content: center; padding: 16px; backdrop-filter: blur(4px); }
+        .modal-box { background: #fff; border-radius: 20px; padding: 32px; max-width: 360px; width: 100%; text-align: center; box-shadow: 0 12px 48px rgba(0,0,0,0.2); }
+    </style>
+</head>
+<body>
+
+    <div id="topbar">
+        <div style="font-weight: 900; color: #1e40af; font-size: 1.1rem;">🔬 進階實驗報告</div>
+        <div id="student-info" style="background: #e0f2fe; padding: 6px 12px; border-radius: 99px; font-weight: bold; color: #0284c7;">載入中...</div>
+    </div>
+
+    <div class="container">
+        <form id="record-form">
+            
+            <div class="panel">
+                <div class="title-wrapper"><h1>第一部分：實驗假設</h1></div>
+                <p style="color: #64748b; margin-bottom: 20px; font-weight: bold;">在動手之前，先猜猜看會發生什麼事？</p>
+
+                <div class="q-section">
+                    <div class="q-title">🤔 實驗1：橡皮圈多長有差嗎？</div>
+                    <div class="q-text">橡皮圈拉長的長度愈長，冰壺移動的彈射距離會愈：</div>
+                    <div class="options">
+                        <label class="option-label"><input type="radio" name="q1" value="長" required><div class="option-card">長</div></label>
+                        <label class="option-label"><input type="radio" name="q1" value="短" required><div class="option-card">短</div></label>
+                    </div>
+                </div>
+
+                <div class="q-section">
+                    <div class="q-title">🤔 實驗2：摩擦力的影響</div>
+                    <div class="q-text">相較之下，以相同的力發射冰壺，冰壺會：<br>在檯面上會飛得更：</div>
+                    <div class="options">
+                        <label class="option-label"><input type="radio" name="q2a" value="遠" required><div class="option-card">遠</div></label>
+                        <label class="option-label"><input type="radio" name="q2a" value="近" required><div class="option-card">近</div></label>
+                    </div>
+                    <div class="q-text">在地毯/毛巾上會飛得更：</div>
+                    <div class="options">
+                        <label class="option-label"><input type="radio" name="q2b" value="遠" required><div class="option-card">遠</div></label>
+                        <label class="option-label"><input type="radio" name="q2b" value="近" required><div class="option-card">近</div></label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="panel">
+                <div class="title-wrapper"><h1>第二部分：實驗數據紀錄</h1></div>
+                
+                <div class="q-section">
+                    <div class="q-title">📐 實驗1：橡皮圈拉長度與距離的關係</div>
+                    <div class="table-wrapper">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>擺動角度</th>
+                                    <th>第一次距離 (cm)</th>
+                                    <th>第二次距離 (cm)</th>
+                                    <th>平均距離 (cm)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td style="font-weight: bold; background: #f8fafc;">90°</td>
+                                    <td><input type="number" step="0.1" name="d90_1" required></td>
+                                    <td><input type="number" step="0.1" name="d90_2" required></td>
+                                    <td><input type="number" step="0.1" name="d90_avg" required></td>
+                                </tr>
+                                <tr>
+                                    <td style="font-weight: bold; background: #f8fafc;">135°</td>
+                                    <td><input type="number" step="0.1" name="d135_1" required></td>
+                                    <td><input type="number" step="0.1" name="d135_2" required></td>
+                                    <td><input type="number" step="0.1" name="d135_avg" required></td>
+                                </tr>
+                                <tr>
+                                    <td style="font-weight: bold; background: #f8fafc;">180°</td>
+                                    <td><input type="number" step="0.1" name="d180_1" required></td>
+                                    <td><input type="number" step="0.1" name="d180_2" required></td>
+                                    <td><input type="number" step="0.1" name="d180_avg" required></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="q-text" style="color: #1e40af; margin-top: 10px;">實驗結論：橡皮圈拉長的長度愈長，冰壺移動的彈射距離會愈：</div>
+                    <div class="options">
+                        <label class="option-label"><input type="radio" name="c1" value="長" required><div class="option-card">長</div></label>
+                        <label class="option-label"><input type="radio" name="c1" value="短" required><div class="option-card">短</div></label>
+                    </div>
+                </div>
+
+                <div class="q-section" style="border-bottom: none; margin-bottom: 0; padding-bottom: 0;">
+                    <div class="q-title">🧶 實驗2：不同表面的摩擦力測試</div>
+                    <div class="q-text" style="font-size: 0.95rem;">※ 請統一使用 135° 的力量發射</div>
+                    <div class="table-wrapper">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>表面材質</th>
+                                    <th>第一次距離 (cm)</th>
+                                    <th>第二次距離 (cm)</th>
+                                    <th>平均距離 (cm)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td style="font-weight: bold; background: #f8fafc;">光滑檯面</td>
+                                    <td><input type="number" step="0.1" name="desk_1" required></td>
+                                    <td><input type="number" step="0.1" name="desk_2" required></td>
+                                    <td><input type="number" step="0.1" name="desk_avg" required></td>
+                                </tr>
+                                <tr>
+                                    <td style="font-weight: bold; background: #f8fafc;">地毯/毛巾</td>
+                                    <td><input type="number" step="0.1" name="carpet_1" required></td>
+                                    <td><input type="number" step="0.1" name="carpet_2" required></td>
+                                    <td><input type="number" step="0.1" name="carpet_avg" required></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="q-text" style="color: #1e40af; margin-top: 10px;">實驗結論：摩擦力較大的是：</div>
+                    <div class="options">
+                        <label class="option-label"><input type="radio" name="c2" value="檯面" required><div class="option-card">檯面</div></label>
+                        <label class="option-label"><input type="radio" name="c2" value="地毯/毛巾" required><div class="option-card">地毯/毛巾</div></label>
+                    </div>
+                </div>
+            </div>
+
+            <button type="submit" class="submit-btn" id="submit-btn">📤 提交實驗報告</button>
+        </form>
+    </div>
+
+    <div id="success-modal" class="modal-overlay">
+        <div class="modal-box">
+            <div style="font-size: 4rem; margin-bottom: 10px;">✅</div>
+            <h2 style="font-size: 1.6rem; font-weight: 900; color: #2563eb; margin-bottom: 8px;">報告提交成功！</h2>
+            <p style="color: #64748b; font-size: 1rem; font-weight: bold; margin-bottom: 20px;">你已經完成所有實驗與測量，做得非常好！</p>
+            <button onclick="returnToHome()" style="width: 100%; background: #cbd5e1; color: #334155; font-weight: bold; border: none; border-radius: 10px; padding: 12px; cursor: pointer;">關閉</button>
+        </div>
+    </div>
+
+    <script>
+        const urlParams = new URLSearchParams(window.location.search);
+        const studentClass = urlParams.get('class') || '未設定班別';
+        const studentId = urlParams.get('id') || '未設定學號';
+
+        document.getElementById('student-info').innerText = `${studentClass} 班 - ${studentId} 號`;
+        const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwHKY-YDXziCb0eCZtW-GQ9MGUQshKIIJk1qJgX7TPqTL1YwThCrvCld5YNSH9CSwpPew/exec";
+
+        document.getElementById('record-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const submitBtn = document.getElementById('submit-btn');
+            submitBtn.disabled = true;
+            submitBtn.innerText = "⏳ 傳送中...";
+
+            const q1 = document.querySelector('input[name="q1"]:checked').value;
+            const q2a = document.querySelector('input[name="q2a"]:checked').value;
+            const q2b = document.querySelector('input[name="q2b"]:checked').value;
+
+            const d90_avg = document.querySelector('input[name="d90_avg"]').value;
+            const d135_avg = document.querySelector('input[name="d135_avg"]').value;
+            const d180_avg = document.querySelector('input[name="d180_avg"]').value;
+            const c1 = document.querySelector('input[name="c1"]:checked').value;
+
+            const desk_avg = document.querySelector('input[name="desk_avg"]').value;
+            const carpet_avg = document.querySelector('input[name="carpet_avg"]').value;
+            const c2 = document.querySelector('input[name="c2"]:checked').value;
+
+            const ansStr = 
+                `【假設】Q1:${q1}, Q2(檯面):${q2a}, Q2(地毯):${q2b} || ` +
+                `【實1】90度avg:${d90_avg}, 135度avg:${d135_avg}, 180度avg:${d180_avg}. (結論:${c1}) || ` +
+                `【實2】檯面avg:${desk_avg}, 地毯avg:${carpet_avg}. (結論:摩擦力大的是${c2})`;
+
+            const data = {
+                gameName: '冰壺發射器-進階報告',
+                studentClass: studentClass,
+                studentId: studentId,
+                playDate: new Date().toLocaleDateString('zh-HK'),
+                playTime: "完成填寫",
+                score: ansStr
+            };
+
+            fetch(GAS_WEB_APP_URL, {
+                method: 'POST',
+                body: JSON.stringify(data),
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' }
+            })
+            .then(res => res.json())
+            .then(res => {
+                document.getElementById('success-modal').style.display = 'flex';
+            })
+            .catch(err => {
+                alert("傳送失敗，請檢查網絡連線！");
+                submitBtn.disabled = false;
+                submitBtn.innerText = "📤 重新提交實驗報告";
+            });
+        });
+
+        function returnToHome() {
+            document.getElementById('success-modal').style.display = 'none';
+            document.getElementById('record-form').reset();
+            const submitBtn = document.getElementById('submit-btn');
+            submitBtn.disabled = false;
+            submitBtn.innerText = "📤 提交實驗報告";
+        }
+    </script>
+</body>
+</html>
