@@ -22,14 +22,14 @@
         h1 { font-size: 1.6rem; font-weight: 900; color: #0f172a; text-align: center; margin-bottom: 8px; border-bottom: 3px solid #3b82f6; display: inline-block; padding-bottom: 4px; }
         .title-wrapper { text-align: center; margin-bottom: 20px; }
         
-        .q-section { margin-bottom: 24px; padding-bottom: 20px; border-bottom: 1px dashed #cbd5e1; }
-        .q-section:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+        .q-section { margin-bottom: 24px; padding-bottom: 20px; border-bottom: 1px dashed #cbd5e1; transition: background-color 0.3s, border-color 0.3s; padding: 16px; border-radius: 12px; }
+        .q-section:last-child { border-bottom: none; margin-bottom: 0; }
         .q-title { font-size: 1.2rem; font-weight: 900; color: #1e40af; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
         .q-text { font-size: 1rem; font-weight: bold; color: #334155; margin-bottom: 12px; line-height: 1.6; }
         
         .options { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
-        .option-label { flex: 1; min-width: 100px; text-align: center; cursor: pointer; }
-        .option-label input { display: none; }
+        .option-label { flex: 1; min-width: 100px; text-align: center; cursor: pointer; position: relative; }
+        .option-label input { position: absolute; opacity: 0; width: 1px; height: 1px; }
         .option-card {
             background: #f1f5f9; border: 2px solid #cbd5e1; border-radius: 12px;
             padding: 10px; font-size: 1.05rem; font-weight: 800; color: #475569;
@@ -42,19 +42,25 @@
         table { width: 100%; border-collapse: collapse; min-width: 500px; }
         th, td { border: 1px solid #cbd5e1; padding: 12px; text-align: center; }
         th { background-color: #f8fafc; font-weight: 800; color: #334155; font-size: 0.95rem; }
-        td input[type="number"] { width: 100%; padding: 8px; border: 1px solid #94a3b8; border-radius: 6px; text-align: center; font-size: 1rem; font-weight: bold; }
+        td input[type="number"] { width: 100%; padding: 8px; border: 1px solid #94a3b8; border-radius: 6px; text-align: center; font-size: 1rem; font-weight: bold; transition: border-color 0.2s, background-color 0.2s; }
         td input[type="number"]:focus { outline: 2px solid #3b82f6; }
 
         .submit-btn {
             width: 100%; background: #2563eb; color: white; font-size: 1.2rem; font-weight: 900;
             border: none; border-radius: 12px; padding: 16px; margin-top: 10px; cursor: pointer;
-            box-shadow: 0 4px 0 #1d4ed8; transition: transform 0.1s, box-shadow 0.1s;
+            box-shadow: 0 4px 0 #1d4ed8; transition: transform 0.1s, box-shadow 0.1s, background-color 0.2s;
         }
         .submit-btn:active { transform: translateY(4px); box-shadow: 0 0 0 #1d4ed8; }
         .submit-btn:disabled { background: #9ca3af; box-shadow: 0 4px 0 #6b7280; cursor: not-allowed; }
 
         .modal-overlay { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.6); z-index: 100; display: none; align-items: center; justify-content: center; padding: 16px; backdrop-filter: blur(4px); }
         .modal-box { background: #fff; border-radius: 20px; padding: 32px; max-width: 360px; width: 100%; text-align: center; box-shadow: 0 12px 48px rgba(0,0,0,0.2); }
+
+        /* 錯誤提示動畫 */
+        @keyframes flash-error { 0%, 100% { background-color: transparent; border-color: #e2e8f0; } 50% { background-color: #fef2f2; border-color: #f87171; border-style: solid; border-width: 2px; } }
+        .error-highlight { animation: flash-error 1s ease-in-out 3; }
+        @keyframes flash-input-error { 0%, 100% { background-color: #fff; border-color: #94a3b8; } 50% { background-color: #fef2f2; border-color: #f87171; } }
+        .error-input-highlight { animation: flash-input-error 1s ease-in-out 3; border-color: #f87171 !important; background-color: #fef2f2; }
     </style>
 </head>
 <body>
@@ -65,13 +71,13 @@
     </div>
 
     <div class="container">
-        <form id="record-form">
+        <form id="record-form" novalidate>
             
             <div class="panel">
                 <div class="title-wrapper"><h1>第一部分：實驗假設</h1></div>
                 <p style="color: #64748b; margin-bottom: 20px; font-weight: bold;">在動手之前，先猜猜看會發生什麼事？</p>
 
-                <div class="q-section">
+                <div class="q-section" id="q-q1">
                     <div class="q-title">🤔 實驗1：橡皮圈多長有差嗎？</div>
                     <div class="q-text">橡皮圈拉長的長度愈長，冰壺移動的彈射距離會愈：</div>
                     <div class="options">
@@ -80,14 +86,14 @@
                     </div>
                 </div>
 
-                <div class="q-section">
+                <div class="q-section" id="q-q2a">
                     <div class="q-title">🤔 實驗2：摩擦力的影響</div>
                     <div class="q-text">相較之下，以相同的力發射冰壺，冰壺會：<br>在檯面上會飛得更：</div>
                     <div class="options">
                         <label class="option-label"><input type="radio" name="q2a" value="遠" required><div class="option-card">遠</div></label>
                         <label class="option-label"><input type="radio" name="q2a" value="近" required><div class="option-card">近</div></label>
                     </div>
-                    <div class="q-text">在地毯/毛巾上會飛得更：</div>
+                    <div class="q-text mt-4" id="q-q2b">在地毯/毛巾上會飛得更：</div>
                     <div class="options">
                         <label class="option-label"><input type="radio" name="q2b" value="遠" required><div class="option-card">遠</div></label>
                         <label class="option-label"><input type="radio" name="q2b" value="近" required><div class="option-card">近</div></label>
@@ -98,7 +104,7 @@
             <div class="panel">
                 <div class="title-wrapper"><h1>第二部分：實驗數據紀錄</h1></div>
                 
-                <div class="q-section">
+                <div class="q-section" id="q-exp1">
                     <div class="q-title">📐 實驗1：橡皮圈拉長度與距離的關係</div>
                     <div class="table-wrapper">
                         <table>
@@ -132,14 +138,14 @@
                             </tbody>
                         </table>
                     </div>
-                    <div class="q-text" style="color: #1e40af; margin-top: 10px;">實驗結論：橡皮圈拉長的長度愈長，冰壺移動的彈射距離會愈：</div>
+                    <div class="q-text mt-4" id="q-c1" style="color: #1e40af;">實驗結論：橡皮圈拉長的長度愈長，冰壺移動的彈射距離會愈：</div>
                     <div class="options">
                         <label class="option-label"><input type="radio" name="c1" value="長" required><div class="option-card">長</div></label>
                         <label class="option-label"><input type="radio" name="c1" value="短" required><div class="option-card">短</div></label>
                     </div>
                 </div>
 
-                <div class="q-section" style="border-bottom: none; margin-bottom: 0; padding-bottom: 0;">
+                <div class="q-section" id="q-exp2">
                     <div class="q-title">🧶 實驗2：不同表面的摩擦力測試</div>
                     <div class="q-text" style="font-size: 0.95rem;">※ 請統一使用 135° 的力量發射</div>
                     <div class="table-wrapper">
@@ -168,10 +174,20 @@
                             </tbody>
                         </table>
                     </div>
-                    <div class="q-text" style="color: #1e40af; margin-top: 10px;">實驗結論：摩擦力較大的是：</div>
+                    <div class="q-text mt-4" id="q-c2" style="color: #1e40af;">實驗結論：摩擦力較大的是：</div>
                     <div class="options">
                         <label class="option-label"><input type="radio" name="c2" value="檯面" required><div class="option-card">檯面</div></label>
                         <label class="option-label"><input type="radio" name="c2" value="地毯/毛巾" required><div class="option-card">地毯/毛巾</div></label>
+                    </div>
+                </div>
+                
+                <div class="q-section" id="q-c3" style="border-bottom: none; margin-bottom: 0; padding-bottom: 0;">
+                    <div class="q-title">💥 實驗3：碰撞觀察</div>
+                    <div class="q-text" style="color: #1e40af;">當移動的冰壺撞擊靜止的冰壺時，原先移動中的冰壺：</div>
+                    <div class="options">
+                        <label class="option-label"><input type="radio" name="c3" value="繼續向前移動" required><div class="option-card">繼續向前移動</div></label>
+                        <label class="option-label"><input type="radio" name="c3" value="回彈" required><div class="option-card">回彈</div></label>
+                        <label class="option-label"><input type="radio" name="c3" value="停頓" required><div class="option-card">停頓</div></label>
                     </div>
                 </div>
             </div>
@@ -199,8 +215,50 @@
 
         document.getElementById('record-form').addEventListener('submit', function(e) {
             e.preventDefault();
-            
             const submitBtn = document.getElementById('submit-btn');
+            const form = e.target;
+            
+            // 移除所有舊的高亮提示
+            document.querySelectorAll('.error-highlight').forEach(el => el.classList.remove('error-highlight'));
+            document.querySelectorAll('.error-input-highlight').forEach(el => el.classList.remove('error-input-highlight'));
+
+            const requiredInputs = form.querySelectorAll('input[required]');
+            let firstUnfilled = null;
+
+            // 檢查邏輯
+            requiredInputs.forEach(input => {
+                if (firstUnfilled) return; // 已經找到第一個沒填的就跳過
+
+                if (input.type === 'radio') {
+                    if (!form.querySelector(`input[name="${input.name}"]:checked`)) {
+                        firstUnfilled = document.getElementById(`q-${input.name}`);
+                    }
+                } else if (input.type === 'number') {
+                    if (!input.value.trim()) {
+                        firstUnfilled = input;
+                        input.classList.add('error-input-highlight');
+                    }
+                }
+            });
+
+            if (firstUnfilled) {
+                firstUnfilled.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                
+                if (firstUnfilled.tagName !== 'INPUT') {
+                    firstUnfilled.classList.add('error-highlight');
+                }
+
+                submitBtn.innerText = "⚠️ 請填寫所有欄位！";
+                submitBtn.style.backgroundColor = "#ef4444";
+                submitBtn.style.boxShadow = "0 4px 0 #b91c1c";
+                setTimeout(() => {
+                    submitBtn.innerText = "📤 提交實驗報告";
+                    submitBtn.style.backgroundColor = "#2563eb";
+                    submitBtn.style.boxShadow = "0 4px 0 #1d4ed8";
+                }, 2000);
+                return;
+            }
+
             submitBtn.disabled = true;
             submitBtn.innerText = "⏳ 傳送中...";
 
@@ -208,19 +266,32 @@
             const q2a = document.querySelector('input[name="q2a"]:checked').value;
             const q2b = document.querySelector('input[name="q2b"]:checked').value;
 
+            const d90_1 = document.querySelector('input[name="d90_1"]').value;
+            const d90_2 = document.querySelector('input[name="d90_2"]').value;
             const d90_avg = document.querySelector('input[name="d90_avg"]').value;
+            const d135_1 = document.querySelector('input[name="d135_1"]').value;
+            const d135_2 = document.querySelector('input[name="d135_2"]').value;
             const d135_avg = document.querySelector('input[name="d135_avg"]').value;
+            const d180_1 = document.querySelector('input[name="d180_1"]').value;
+            const d180_2 = document.querySelector('input[name="d180_2"]').value;
             const d180_avg = document.querySelector('input[name="d180_avg"]').value;
             const c1 = document.querySelector('input[name="c1"]:checked').value;
 
+            const desk_1 = document.querySelector('input[name="desk_1"]').value;
+            const desk_2 = document.querySelector('input[name="desk_2"]').value;
             const desk_avg = document.querySelector('input[name="desk_avg"]').value;
+            const carpet_1 = document.querySelector('input[name="carpet_1"]').value;
+            const carpet_2 = document.querySelector('input[name="carpet_2"]').value;
             const carpet_avg = document.querySelector('input[name="carpet_avg"]').value;
             const c2 = document.querySelector('input[name="c2"]:checked').value;
 
+            const c3 = document.querySelector('input[name="c3"]:checked').value;
+
             const ansStr = 
                 `【假設】Q1:${q1}, Q2(檯面):${q2a}, Q2(地毯):${q2b} || ` +
-                `【實1】90度avg:${d90_avg}, 135度avg:${d135_avg}, 180度avg:${d180_avg}. (結論:${c1}) || ` +
-                `【實2】檯面avg:${desk_avg}, 地毯avg:${carpet_avg}. (結論:摩擦力大的是${c2})`;
+                `【實1】90度:(${d90_1},${d90_2} avg:${d90_avg}), 135度:(${d135_1},${d135_2} avg:${d135_avg}), 180度:(${d180_1},${d180_2} avg:${d180_avg}). (結論:${c1}) || ` +
+                `【實2】檯面:(${desk_1},${desk_2} avg:${desk_avg}), 地毯:(${carpet_1},${carpet_2} avg:${carpet_avg}). (結論:摩擦力大的是${c2}) || ` +
+                `【實3觀察】${c3}`;
 
             const data = {
                 gameName: '冰壺發射器-進階報告',

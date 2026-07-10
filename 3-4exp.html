@@ -22,14 +22,14 @@
         h1 { font-size: 1.6rem; font-weight: 900; color: #0f172a; text-align: center; margin-bottom: 8px; border-bottom: 3px solid #3b82f6; display: inline-block; padding-bottom: 4px; }
         .title-wrapper { text-align: center; margin-bottom: 20px; }
         
-        .q-section { margin-bottom: 24px; padding-bottom: 20px; border-bottom: 1px dashed #cbd5e1; }
-        .q-section:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+        .q-section { margin-bottom: 24px; padding-bottom: 20px; border-bottom: 1px dashed #cbd5e1; transition: background-color 0.3s, border-color 0.3s; padding: 16px; border-radius: 12px; }
+        .q-section:last-child { border-bottom: none; margin-bottom: 0; }
         .q-title { font-size: 1.2rem; font-weight: 900; color: #1e40af; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
         .q-text { font-size: 1rem; font-weight: bold; color: #334155; margin-bottom: 12px; line-height: 1.6; }
         
         .options { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
-        .option-label { flex: 1; min-width: 100px; text-align: center; cursor: pointer; }
-        .option-label input { display: none; }
+        .option-label { flex: 1; min-width: 100px; text-align: center; cursor: pointer; position: relative; }
+        .option-label input { position: absolute; opacity: 0; width: 1px; height: 1px; }
         .option-card {
             background: #f1f5f9; border: 2px solid #cbd5e1; border-radius: 12px;
             padding: 10px; font-size: 1.05rem; font-weight: 800; color: #475569;
@@ -40,13 +40,17 @@
         .submit-btn {
             width: 100%; background: #2563eb; color: white; font-size: 1.2rem; font-weight: 900;
             border: none; border-radius: 12px; padding: 16px; margin-top: 10px; cursor: pointer;
-            box-shadow: 0 4px 0 #1d4ed8; transition: transform 0.1s, box-shadow 0.1s;
+            box-shadow: 0 4px 0 #1d4ed8; transition: transform 0.1s, box-shadow 0.1s, background-color 0.2s;
         }
         .submit-btn:active { transform: translateY(4px); box-shadow: 0 0 0 #1d4ed8; }
         .submit-btn:disabled { background: #9ca3af; box-shadow: 0 4px 0 #6b7280; cursor: not-allowed; }
 
         .modal-overlay { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.6); z-index: 100; display: none; align-items: center; justify-content: center; padding: 16px; backdrop-filter: blur(4px); }
         .modal-box { background: #fff; border-radius: 20px; padding: 32px; max-width: 360px; width: 100%; text-align: center; box-shadow: 0 12px 48px rgba(0,0,0,0.2); }
+        
+        /* 錯誤提示動畫 */
+        @keyframes flash-error { 0%, 100% { background-color: transparent; border-color: #e2e8f0; } 50% { background-color: #fef2f2; border-color: #f87171; border-style: solid; border-width: 2px; } }
+        .error-highlight { animation: flash-error 1s ease-in-out 3; }
     </style>
 </head>
 <body>
@@ -57,13 +61,13 @@
     </div>
 
     <div class="container">
-        <form id="record-form">
+        <form id="record-form" novalidate>
             
             <div class="panel">
                 <div class="title-wrapper"><h1>第一部分：實驗假設</h1></div>
                 <p style="color: #64748b; margin-bottom: 20px; font-weight: bold;">在動手之前，先猜猜看會發生什麼事？</p>
 
-                <div class="q-section">
+                <div class="q-section" id="q-q1">
                     <div class="q-title">🤔 實驗1：撞擊後的「反擊」</div>
                     <div class="q-text">若一個移動中的冰壺，撞向另一個靜止的冰壺，原先移動中的冰壺會：</div>
                     <div class="options">
@@ -77,7 +81,7 @@
             <div class="panel">
                 <div class="title-wrapper"><h1>第二部分：實驗觀察紀錄</h1></div>
 
-                <div class="q-section">
+                <div class="q-section" id="q-c1">
                     <div class="q-title">💥 實驗1：碰撞觀察</div>
                     <div class="q-text" style="color: #1e40af;">當移動的冰壺撞擊靜止的冰壺時，原先移動中的冰壺：</div>
                     <div class="options">
@@ -111,14 +115,44 @@
 
         document.getElementById('record-form').addEventListener('submit', function(e) {
             e.preventDefault();
-            
             const submitBtn = document.getElementById('submit-btn');
+            
+            // 自訂驗證邏輯
+            const form = e.target;
+            const requiredInputs = form.querySelectorAll('input[required]');
+            let firstUnfilled = null;
+
+            document.querySelectorAll('.error-highlight').forEach(el => el.classList.remove('error-highlight'));
+
+            requiredInputs.forEach(input => {
+                if (input.type === 'radio') {
+                    const name = input.name;
+                    if (!form.querySelector(`input[name="${name}"]:checked`)) {
+                        const qBox = document.getElementById(`q-${name}`);
+                        if (qBox && !firstUnfilled) firstUnfilled = qBox;
+                    }
+                }
+            });
+
+            if (firstUnfilled) {
+                firstUnfilled.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                firstUnfilled.classList.add('error-highlight');
+                submitBtn.innerText = "⚠️ 請填寫所有題目！";
+                submitBtn.style.backgroundColor = "#ef4444";
+                submitBtn.style.boxShadow = "0 4px 0 #b91c1c";
+                setTimeout(() => {
+                    submitBtn.innerText = "📤 提交實驗報告";
+                    submitBtn.style.backgroundColor = "#2563eb";
+                    submitBtn.style.boxShadow = "0 4px 0 #1d4ed8";
+                }, 2000);
+                return;
+            }
+
             submitBtn.disabled = true;
             submitBtn.innerText = "⏳ 傳送中...";
 
             const q1 = document.querySelector('input[name="q1"]:checked').value;
             const c1 = document.querySelector('input[name="c1"]:checked').value;
-
             const ansStr = `【假設】Q1:${q1} || 【實1觀察】${c1}`;
 
             const data = {
